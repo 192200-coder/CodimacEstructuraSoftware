@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest"
 import type { Server } from "node:http"
 import bcrypt from "bcryptjs"
+import jwt from "jsonwebtoken"
 
 const mocks = vi.hoisted(() => ({ query: vi.fn() }))
 
@@ -87,6 +88,97 @@ describe("API CODIMAC", () => {
         fields: [],
       },
     })
+  })
+
+  it("responde 403 al intentar crear un usuario con rol Despachador", async () => {
+    query.mockClear()
+    const sessionId = "90000000-0000-4000-8000-000000000099"
+    const dispatcherSession = {
+      rows: [{
+        id: "90000000-0000-4000-8000-000000000001",
+        email: "despachador@codimac.pe",
+        display_name: "Despachador",
+        role: "Despachador",
+        auth_session_id: sessionId,
+      }],
+      rowCount: 1,
+    }
+    query.mockResolvedValueOnce(dispatcherSession as never)
+      .mockResolvedValueOnce(dispatcherSession as never)
+    const token = jwt.sign(
+      { sub: "90000000-0000-4000-8000-000000000001", jti: sessionId },
+      process.env.JWT_SECRET!,
+    )
+
+    const response = await fetch(`${baseUrl}/api/admin/users`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: "new@codimac.pe",
+        password: "long-password",
+        name: "Nuevo usuario",
+        role: "Chofer",
+      }),
+    })
+
+    expect(response.status).toBe(403)
+    expect(await response.json()).toMatchObject({
+      error: { code: "FORBIDDEN" },
+    })
+    expect(query.mock.calls.every(([statement]) =>
+      String(statement).includes("FROM profiles p JOIN auth_sessions"),
+    )).toBe(true)
+  })
+
+  it("rechaza el alta de usuario cuando la base reporta un correo duplicado", async () => {
+    const userId = "90000000-0000-4000-8000-000000000003"
+    const sessionId = "90000000-0000-4000-8000-000000000098"
+    query.mockImplementation(async (statement) => {
+      if (String(statement).includes("FROM profiles p JOIN auth_sessions")) {
+        return {
+          rows: [{
+            id: userId,
+            email: "admin@codimac.pe",
+            display_name: "Administrador",
+            role: "Administrador",
+            auth_session_id: sessionId,
+          }],
+          rowCount: 1,
+        } as never
+      }
+      if (String(statement).includes("INSERT INTO profiles")) {
+        throw Object.assign(new Error("duplicate key"), { code: "23505" })
+      }
+      return { rows: [], rowCount: 0 } as never
+    })
+    const token = jwt.sign(
+      { sub: userId, jti: sessionId },
+      process.env.JWT_SECRET!,
+    )
+
+    const response = await fetch(`${baseUrl}/api/admin/users`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email: "existing@codimac.pe",
+        password: "long-password",
+        name: "Usuario duplicado",
+        role: "Chofer",
+      }),
+    })
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({
+      error: { code: "CONFLICT" },
+    })
+    query.mockReset()
+    query.mockResolvedValue({ rows: [], rowCount: 0 } as never)
   })
 
   it("rechaza credenciales incorrectas sin filtrar datos de usuario", async () => {

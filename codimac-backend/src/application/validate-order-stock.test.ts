@@ -14,7 +14,7 @@ describe("validación de disponibilidad al registrar pedidos", () => {
     )).toEqual([{
       field: "lineas[0].cantidad",
       code: "STOCK_INSUFICIENTE",
-      message: "Solo hay 85 unidades disponibles de Cemento tipo I; faltan 915.",
+      message: "Solo hay 85 unidades disponibles; faltan 915.",
     }])
   })
 

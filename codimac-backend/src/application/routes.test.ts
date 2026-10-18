@@ -182,6 +182,21 @@ describe("casos de uso de reparto", () => {
     }))
   })
 
+  it("bloquea la asignación cuando la carga supera la capacidad del vehículo", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteForAssignment).mockResolvedValue({ status: "Aprobada" })
+    vi.mocked(tx.lockAvailableDriver).mockResolvedValue(true)
+    vi.mocked(tx.lockAvailableVehicle).mockResolvedValue({ capacityKg: 500 })
+    vi.mocked(tx.routeWeight).mockResolvedValue(500.1)
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await expect(useCases.assign("route-1", "driver-1", "vehicle-1", "dispatcher-1"))
+      .rejects.toMatchObject({ code: "CONFLICT" })
+
+    expect(tx.assignRoute).not.toHaveBeenCalled()
+    expect(tx.setVehicleAvailable).not.toHaveBeenCalled()
+  })
+
   it("inicia la ruta en En curso y conserva En ruta para el estado del pedido", async () => {
     const tx = createTransaction()
     vi.mocked(tx.lockRouteForStart).mockResolvedValue({

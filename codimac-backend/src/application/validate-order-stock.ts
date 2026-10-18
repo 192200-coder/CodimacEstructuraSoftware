@@ -37,7 +37,7 @@ export function validateOrderStock(
     return [{
       field: `lineas[${index}].cantidad`,
       code: "STOCK_INSUFICIENTE",
-      message: `Solo hay ${available} unidades disponibles de ${product.name}; faltan ${line.quantity - available}.`,
+      message: `Solo hay ${available} unidades disponibles; faltan ${line.quantity - available}.`,
     }]
   })
 }
