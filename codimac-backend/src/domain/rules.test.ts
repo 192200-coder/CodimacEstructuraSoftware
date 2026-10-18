@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest"
-import { canAdjustStock, hasAvailableStock, isWithinRouteLimit, nextIncident } from "./rules.js"
+import { availableStock, canAdjustStock, hasAvailableStock, isWithinRouteLimit, nextIncident } from "./rules.js"
 
 describe("reglas de inventario", () => {
   it("solo reserva existencias disponibles y cantidades positivas", () => {
+    expect(availableStock(100, 30)).toBe(70)
     expect(hasAvailableStock(100, 30, 70)).toBe(true)
     expect(hasAvailableStock(100, 31, 70)).toBe(false)
     expect(hasAvailableStock(100, 0, 0)).toBe(false)

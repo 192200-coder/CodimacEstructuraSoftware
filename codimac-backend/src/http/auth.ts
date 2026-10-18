@@ -6,6 +6,8 @@ import { z } from "zod"
 import { config } from "../config.js"
 import { pool } from "../db/pool.js"
 import { HttpError } from "./errors.js"
+import { registrarEventoAuditoria } from "../application/registro-auditoria.js"
+import { PostgresRegistroAuditoria } from "../adapters/postgres-registro-auditoria.js"
 
 export type Role = "Despachador" | "Chofer" | "Administrador"
 export interface AuthUser {
@@ -38,6 +40,22 @@ export async function login(emailInput: unknown, passwordInput: unknown) {
   )
   const profile = result.rows[0] as (AuthUser & { password_hash: string; active: boolean }) | undefined
   if (!profile || !profile.active || !(await bcrypt.compare(password, profile.password_hash))) {
+    await registrarEventoAuditoria(
+      new PostgresRegistroAuditoria(async (text, values) => {
+        await pool.query(text, values)
+      }),
+      {
+        usuarioId: profile?.id ?? null,
+        accion: "Inicio de sesión fallido",
+        entidad: "Autenticación",
+        entidadId: profile?.id ?? null,
+        valorAnterior: null,
+        valorNuevo: {
+          correoIngresado: email,
+          motivo: !profile ? "Cuenta no encontrada" : !profile.active ? "Cuenta inactiva" : "Credenciales incorrectas",
+        },
+      },
+    )
     throw new HttpError(401, "Correo o contraseña incorrectos")
   }
   const user: AuthUser = {

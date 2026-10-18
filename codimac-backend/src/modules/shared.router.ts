@@ -32,7 +32,7 @@ sharedRouter.put("/preferences", async (req, res) => {
 sharedRouter.get("/notifications", async (req, res) => {
   const result = await pool.query(
     `SELECT e.id,e.entity_type,e.new_status,e.created_at,
-       r.code AS route_code,o.code AS order_code,c.name AS client_name
+       r.codigo AS route_code,o.codigo AS order_code,c.name AS client_name
      FROM status_events e
      LEFT JOIN routes r ON r.id=COALESCE(e.route_id,CASE WHEN e.entity_type='Ruta' THEN e.entity_id END)
      LEFT JOIN route_stops s ON s.id=COALESCE(e.stop_id,CASE WHEN e.entity_type='Parada' THEN e.entity_id END)
@@ -44,16 +44,6 @@ sharedRouter.get("/notifications", async (req, res) => {
     [req.user!.role, req.user!.id],
   )
   res.json({ notifications: result.rows })
-})
-
-sharedRouter.post("/events", async (req, res) => {
-  const body = z.object({ message: z.string().trim().min(1).max(500) }).parse(req.body)
-  const result = await pool.query(
-    `INSERT INTO audit_events(message,actor_id) VALUES($1,$2)
-     RETURNING id,message,created_at`,
-    [body.message, req.user!.id],
-  )
-  res.status(201).json({ event: { ...result.rows[0], user: req.user!.display_name, role: req.user!.role } })
 })
 
 sharedRouter.get("/resources", async (_req, res) => {

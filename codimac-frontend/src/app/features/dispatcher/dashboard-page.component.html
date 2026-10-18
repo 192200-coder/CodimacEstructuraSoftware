@@ -28,8 +28,8 @@
             <thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Fecha</th><th>Seguimiento privado</th></tr></thead>
             <tbody>
               @for (order of recentOrders; track order.id) {
-                <tr>
-                  <td><strong>{{ order.code }}</strong></td>
+                <tr [class.cancelled-order-row]="order.status === 'Cancelado'">
+                  <td><strong [class.cancelled-order-code]="order.status === 'Cancelado'">{{ order.code }}</strong></td>
                   <td>{{ order.clients?.name ?? "Cliente" }}</td>
                   <td><codimac-status [status]="order.status" /></td>
                   <td>{{ formatDate(order.ordered_at) }}</td>

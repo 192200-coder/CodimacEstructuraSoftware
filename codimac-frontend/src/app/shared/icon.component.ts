@@ -3,6 +3,8 @@ import { Component, Input } from "@angular/core"
 const iconPaths: Record<string, string[]> = {
   grid: ["M3 3h7v7H3z", "M14 3h7v7h-7z", "M3 14h7v7H3z", "M14 14h7v7h-7z"],
   box: ["m4 7 8-4 8 4-8 4-8-4Z", "m4 7 8 4 8-4v10l-8 4-8-4V7Z", "M12 11v10"],
+  checkCircle: ["M22 11.08V12a10 10 0 1 1-5.93-9.14", "m9 11 3 3L22 4"],
+  checkCheck: ["m18 6-7 7-3-3", "m22 10-7.5 7.5-3-3"],
   warehouse: ["m3 10 9-7 9 7v11H3V10Z", "M7 21v-7h10v7M7 10h.01M12 10h.01M17 10h.01"],
   users: ["M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", "M5 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z", "M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"],
   truck: ["M10 17h4V5H2v12h3", "M14 8h4l4 4v5h-3M14 17h1", "M10 17.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z", "M20 17.5a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0Z"],
@@ -19,6 +21,7 @@ const iconPaths: Record<string, string[]> = {
   chevron: ["m9 18 6-6-6-6"],
   menu: ["M4 7h16M4 12h16M4 17h16"],
   close: ["m6 6 12 12M18 6 6 18"],
+  xCircle: ["M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Z", "m15 9-6 6m0-6 6 6"],
 }
 
 @Component({

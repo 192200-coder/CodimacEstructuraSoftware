@@ -4,6 +4,7 @@ import { AppStateService } from "../core/app-state.service"
 import { CodimacApiService } from "../core/codimac-api.service"
 import type { DialogKind } from "../core/models"
 import { IconComponent } from "../shared/icon.component"
+import { ApiRequestError, type InventoryAdjustmentReason } from "../../lib/codimac-api"
 
 const titles: Record<DialogKind, string> = {
   order: "Nuevo pedido",
@@ -20,6 +21,9 @@ const titles: Record<DialogKind, string> = {
 interface CatalogOption {
   id: string
   name?: string
+  unit?: string
+  total_stock?: string | number
+  reserved_stock?: string | number
 }
 
 @Component({
@@ -33,17 +37,21 @@ export class FormDialogComponent implements OnInit {
   readonly clients = signal<CatalogOption[]>([])
   readonly products = signal<CatalogOption[]>([])
   readonly inventoryProducts = signal<CatalogOption[]>([])
+  readonly orderFieldErrors = signal<Record<string, string>>({})
+  readonly inventoryFieldErrors = signal<Record<string, string>>({})
 
   name = ""
   contact = ""
   address = ""
   latitude: number | null = null
   longitude: number | null = null
-  code = ""
   clientId = ""
   productId = ""
   quantity = 1
-  reason = ""
+  reason: InventoryAdjustmentReason | "" = ""
+  detail = ""
+  observation = ""
+  adjustmentDirection: "Aumentar" | "Disminuir" = "Disminuir"
   deadlineAt = ""
   email = ""
   role = "Despachador"
@@ -99,16 +107,81 @@ export class FormDialogComponent implements OnInit {
     return ["resources", "notifications"].includes(this.kind)
   }
 
+  availableStock(productId: string): number | null {
+    const product = this.products().find((option) => option.id === productId)
+    if (!product || product.total_stock === undefined || product.reserved_stock === undefined) {
+      return null
+    }
+    return Number(product.total_stock) - Number(product.reserved_stock)
+  }
+
+  productUnit(productId: string): string {
+    return this.products().find((product) => product.id === productId)?.unit ?? ""
+  }
+
+  orderItemError(index: number): string {
+    const item = this.orderItems[index]
+    if (!item) return ""
+    const fieldError = this.orderFieldErrors()[`lineas[${index}].cantidad`]
+    if (fieldError) return fieldError
+    const available = this.availableStock(item.productId)
+    if (available === null || Number(item.quantity) <= available) return ""
+    const product = this.products().find((option) => option.id === item.productId)
+    const name = product?.name ?? "este producto"
+    return `Solo hay ${available} unidades disponibles de ${name}; faltan ${Number(item.quantity) - available}.`
+  }
+
+  clearOrderErrors(): void {
+    this.orderFieldErrors.set({})
+  }
+
+  clearInventoryErrors(): void {
+    this.inventoryFieldErrors.set({})
+  }
+
+  inventoryFieldError(field: string): string {
+    return this.inventoryFieldErrors()[field] ?? ""
+  }
+
+  private focusFirstInventoryError(fields: Array<{ field: string }>): void {
+    const firstField = fields.find(({ field }) =>
+      ["productId", "quantity", "observation", "direction", "reason", "detail"].includes(field),
+    )?.field
+    if (!firstField) return
+    queueMicrotask(() => {
+      document.querySelector<HTMLElement>(`[name="${firstField}"]`)?.focus()
+    })
+  }
+
+  private validateInventory(kind: "inventory-entry" | "inventory-adjust"): boolean {
+    const errors: Record<string, string> = {}
+    if (!this.productId) errors["productId"] = "Selecciona un producto."
+    if (!Number.isFinite(Number(this.quantity)) || Number(this.quantity) <= 0) {
+      errors["quantity"] = "Ingresa una cantidad mayor que cero."
+    }
+    if (kind === "inventory-adjust") {
+      if (!this.reason) errors["reason"] = "Selecciona un motivo para el ajuste."
+      if (this.reason === "Otro" && (this.detail.trim().length < 5 || this.detail.trim().length > 120)) {
+        errors["detail"] = "El detalle debe tener entre 5 y 120 caracteres."
+      }
+    }
+    this.inventoryFieldErrors.set(errors)
+    this.focusFirstInventoryError(Object.keys(errors).map((field) => ({ field })))
+    return Object.keys(errors).length === 0
+  }
+
   close(): void {
     this.state.dialog.set(null)
   }
 
   addOrderItem(): void {
+    this.clearOrderErrors()
     this.orderItems = [...this.orderItems, { productId: "", quantity: 1 }]
   }
 
   removeOrderItem(index: number): void {
     if (this.orderItems.length > 1) {
+      this.clearOrderErrors()
       this.orderItems = this.orderItems.filter((_item, itemIndex) => itemIndex !== index)
     }
   }
@@ -121,6 +194,11 @@ export class FormDialogComponent implements OnInit {
   async save(event: SubmitEvent): Promise<void> {
     event.preventDefault()
     const kind = this.kind
+    this.clearOrderErrors()
+    if (kind === "inventory-entry" || kind === "inventory-adjust") {
+      if (!this.validateInventory(kind)) return
+    }
+    this.clearInventoryErrors()
     if (!this.state.isOnline()) {
       this.state.showToast("Inicia sesión para guardar cambios en el backend.")
       return
@@ -137,17 +215,16 @@ export class FormDialogComponent implements OnInit {
           }
           {
           const result = await this.api.createOrder({
-            code: this.code.trim() || `COD-${Date.now()}`,
             clientId: this.clientId,
             deadlineAt: this.deadlineAt ? new Date(this.deadlineAt).toISOString() : null,
             items: this.orderItems.map((item) => ({
               productId: item.productId,
               quantity: Number(item.quantity),
             })),
-          }) as { order?: { code: string; tracking_token: string } }
+          })
           this.close()
           this.state.showToast(
-            `Pedido ${result.order?.code ?? ""} creado. Código privado de seguimiento: ${result.order?.tracking_token ?? "no disponible"}`,
+            `Pedido ${result.order.code} creado. Código privado de seguimiento: ${result.order.tracking_token}`,
             20_000,
           )
           break
@@ -162,12 +239,27 @@ export class FormDialogComponent implements OnInit {
           })
           break
         case "inventory-entry":
-        case "inventory-adjust":
           if (!this.productId) throw new Error("Selecciona un producto.")
           await this.api.adjustInventory(this.productId, {
-            quantity: Number(this.quantity) * (kind === "inventory-adjust" ? -1 : 1),
-            type: kind === "inventory-entry" ? "Entrada" : "Ajuste",
+            type: "Entrada",
+            quantity: Number(this.quantity),
+            ...(this.observation.trim() ? { observation: this.observation.trim() } : {}),
+          })
+          this.state.inventoryRefresh.update((value) => value + 1)
+          break
+        case "inventory-adjust":
+          if (!this.reason) {
+            const errors = [{ field: "reason" }]
+            this.inventoryFieldErrors.set({ reason: "Selecciona un motivo para el ajuste." })
+            this.focusFirstInventoryError(errors)
+            return
+          }
+          await this.api.adjustInventory(this.productId, {
+            type: "Ajuste",
+            quantity: Number(this.quantity),
+            direction: this.adjustmentDirection,
             reason: this.reason,
+            ...(this.reason === "Otro" ? { detail: this.detail.trim() } : {}),
           })
           this.state.inventoryRefresh.update((value) => value + 1)
           break
@@ -208,6 +300,25 @@ export class FormDialogComponent implements OnInit {
         this.state.showToast(`${title} guardado correctamente.`)
       }
     } catch (error) {
+      if (kind === "order" && error instanceof ApiRequestError && error.fields.length) {
+        const fieldErrors = Object.fromEntries(
+          error.fields
+            .filter((field) => field.code === "STOCK_INSUFICIENTE")
+            .map((field) => [field.field, field.message]),
+        )
+        this.orderFieldErrors.set(fieldErrors)
+        if (Object.keys(fieldErrors).length) return
+      }
+      if (
+        (kind === "inventory-entry" || kind === "inventory-adjust") &&
+        error instanceof ApiRequestError &&
+        error.fields.length
+      ) {
+        const fieldErrors = Object.fromEntries(error.fields.map(({ field, message }) => [field, message]))
+        this.inventoryFieldErrors.set(fieldErrors)
+        this.focusFirstInventoryError(error.fields)
+        return
+      }
       this.state.showToast(error instanceof Error ? error.message : "No se pudo guardar en el backend.")
     } finally {
       this.loading.set(false)

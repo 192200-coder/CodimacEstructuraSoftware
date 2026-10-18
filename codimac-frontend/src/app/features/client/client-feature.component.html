@@ -16,13 +16,27 @@
     } @else {
       <div class="tracking">
         <button class="back-link" type="button" (click)="resetConsultation()">← Nueva consulta</button>
-        <p class="mobile-eyebrow">PEDIDO {{ trackingCode() }}</p>
-        <h2>{{ deliveryFailed() ? "No se pudo completar la entrega" : reprogrammed() ? "Reprogramamos tu entrega" : tracking()?.public_status === "Entregado" ? "Tu pedido fue entregado" : tracking()?.public_status === "Registrado" ? "Tu pedido está registrado" : "Tu pedido está en camino" }}</h2>
-        <p>{{ deliveryFailed() ? "Los intentos de entrega de este reparto finalizaron. El pedido volvió a quedar disponible para coordinación; comunícate con CODIMAC para programar el siguiente paso." : reprogrammed() ? "No pudimos completar la primera visita. Haremos un nuevo intento." : tracking()?.public_status === "Entregado" ? "La entrega de tu pedido fue completada." : tracking()?.public_status === "Registrado" ? "El pedido está registrado y en preparación para su despacho." : "Estamos llevando tu pedido al destino registrado." }}</p>
+        <p class="mobile-eyebrow" [class.cancelled-order-code]="isCancelled()">PEDIDO {{ trackingCode() }}</p>
+        <codimac-status [status]="tracking()?.public_status ?? ''" />
+        <h2>{{ trackingTitle }}</h2>
+        <p>{{ trackingMessage }}</p>
         @if (reprogrammed()) {<div class="client-warning"><codimac-icon name="history" [size]="19" /><div><strong>Nuevo intento programado</strong><span>Te visitaremos después de completar la siguiente parada.</span></div></div>}
-        @if (!deliveryFailed()) {
-          <div class="timeline"><div class="done"><span><codimac-icon name="check" [size]="14" /></span><strong>Registrado</strong><small>Pedido recibido</small></div><div [class.active]="tracking()?.public_status === 'En camino'"><span><codimac-icon name="truck" [size]="14" /></span><strong>En camino</strong><small>{{ reprogrammed() ? "Reprogramado" : tracking()?.public_status === "En camino" ? "Ahora" : "Pendiente" }}</small></div><div [class.done]="tracking()?.public_status === 'Entregado'"><span>3</span><strong>Entregado</strong><small>{{ tracking()?.public_status === "Entregado" ? "Completado" : "Próximamente" }}</small></div></div>
-          <div class="arrival-card"><span>Tu posición en la ruta<strong>{{ tracking()?.position ? "Parada " + tracking()?.position + " de " + tracking()?.total_stops : tracking()?.public_status }}</strong></span><span>Llegada estimada<strong>{{ tracking()?.eta_at ? (tracking()?.eta_at | date:"shortTime":"America/Lima") : "Por confirmar" }}</strong></span></div>
+        @if (!deliveryFailed() && !isCancelled()) {
+          <div class="timeline">
+            @for (step of trackingSteps; track step.number) {
+              <div [class.done]="isStepDone(step.number)" [class.active]="isStepActive(step.number)">
+                <span><codimac-icon [name]="step.icon" [size]="14" /></span>
+                <strong>{{ step.label }}</strong>
+                <small>{{ stepDescription(step.number) }}</small>
+              </div>
+            }
+          </div>
+          @if (tracking()?.public_status === "En camino") {
+            <div class="arrival-card">
+              <span>Tu posición en la ruta<strong>Parada {{ tracking()?.position }} de {{ tracking()?.total_stops }}</strong></span>
+              <span>Llegada estimada<strong>{{ tracking()?.eta_at ? (tracking()?.eta_at | date:"shortTime":"America/Lima") : "Por confirmar" }}</strong></span>
+            </div>
+          }
         }
         <div class="privacy-note">Solo mostramos información relacionada con tu pedido.</div>
       </div>

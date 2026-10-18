@@ -4,16 +4,18 @@
       <div><p class="section-kicker">CODIMAC</p><h2 id="dialog-title">{{ title }}</h2></div>
       <button class="icon-button" type="button" (click)="close()" aria-label="Cerrar formulario"><codimac-icon name="close" /></button>
     </header>
-    <form (submit)="save($event)">
+    <form (submit)="save($event)" [attr.novalidate]="kind === 'inventory-entry' || kind === 'inventory-adjust' ? '' : null">
       <div class="dialog-body">
         @if (kind === "order") {
           <div class="dialog-grid">
-            <label>Código<input name="code" [(ngModel)]="code" placeholder="Se genera automáticamente si se deja vacío" /></label>
             <label>Cliente<select name="clientId" [(ngModel)]="clientId" required><option value="">Selecciona un cliente</option>@for (client of clients(); track client.id) {<option [value]="client.id">{{ client.name }}</option>}</select></label>
             <label>Fecha límite<input name="deadlineAt" type="datetime-local" [(ngModel)]="deadlineAt" /></label>
             @for (item of orderItems; track $index; let i = $index) {
-              <label>Producto<select [name]="'productId-' + i" [(ngModel)]="item.productId" required><option value="">Selecciona un producto</option>@for (product of products(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}</select></label>
-              <label>Cantidad<input [name]="'quantity-' + i" type="number" min="0.001" step="0.001" [(ngModel)]="item.quantity" required /></label>
+              <label>Producto<select [name]="'productId-' + i" [(ngModel)]="item.productId" (ngModelChange)="clearOrderErrors()" required><option value="">Selecciona un producto</option>@for (product of products(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}</select></label>
+              <label>Cantidad<input [name]="'quantity-' + i" type="number" min="0.001" step="0.001" [(ngModel)]="item.quantity" (ngModelChange)="clearOrderErrors()" required />
+                <span class="order-stock-available">Disponible: {{ availableStock(item.productId) ?? "—" }} {{ productUnit(item.productId) }}</span>
+                @if (orderItemError(i); as error) {<span class="order-field-error" role="alert">{{ error }}</span>}
+              </label>
               @if (orderItems.length > 1) {<button class="button secondary" type="button" (click)="removeOrderItem(i)">Quitar producto</button>}
             }
             <button class="button secondary full" type="button" (click)="addOrderItem()">Agregar otro producto</button>
@@ -28,10 +30,30 @@
           </div>
         } @else if (kind === "inventory-entry" || kind === "inventory-adjust") {
           <div class="dialog-grid">
-            <label class="full">Producto<select name="productId" [(ngModel)]="productId" required><option value="">Selecciona un producto</option>@for (product of inventoryProducts(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}</select></label>
-            <label>Cantidad<input name="quantity" type="number" [min]="kind === 'inventory-entry' ? 0.001 : 0" step="0.001" [(ngModel)]="quantity" required /></label>
-            <label>Tipo<input [value]="kind === 'inventory-entry' ? 'Entrada' : 'Ajuste negativo'" readonly /></label>
-            <label class="full">Motivo<textarea name="reason" [(ngModel)]="reason" required></textarea></label>
+            <label class="full">Producto<select name="productId" [(ngModel)]="productId" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('productId') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('productId') ? 'inventory-product-error' : null"><option value="">Selecciona un producto</option>@for (product of inventoryProducts(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}</select>
+              @if (inventoryFieldError("productId"); as error) {<span id="inventory-product-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+            </label>
+            <label>Cantidad<input name="quantity" type="number" [(ngModel)]="quantity" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('quantity') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('quantity') ? 'inventory-quantity-error' : null" />
+              @if (inventoryFieldError("quantity"); as error) {<span id="inventory-quantity-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+            </label>
+            @if (kind === "inventory-entry") {
+              <label>Tipo<input value="Entrada" readonly /></label>
+              <label class="full">Observación (opcional)<textarea name="observation" [(ngModel)]="observation" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('observation') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('observation') ? 'inventory-observation-error' : null"></textarea>
+                @if (inventoryFieldError("observation"); as error) {<span id="inventory-observation-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+              </label>
+            } @else {
+              <label>Dirección<select name="direction" [(ngModel)]="adjustmentDirection" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('direction') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('direction') ? 'inventory-direction-error' : null"><option value="Aumentar">Aumentar</option><option value="Disminuir">Disminuir</option></select>
+                @if (inventoryFieldError("direction"); as error) {<span id="inventory-direction-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+              </label>
+              <label class="full">Motivo<select name="reason" [(ngModel)]="reason" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('reason') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('reason') ? 'inventory-reason-error' : null"><option value="">Selecciona un motivo</option><option value="Conteo físico">Conteo físico</option><option value="Merma o daño">Merma o daño</option><option value="Corrección de registro">Corrección de registro</option><option value="Otro">Otro</option></select>
+                @if (inventoryFieldError("reason"); as error) {<span id="inventory-reason-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+              </label>
+              @if (reason === "Otro") {
+                <label class="full">Detalle (5 a 120 caracteres)<textarea name="detail" [(ngModel)]="detail" (ngModelChange)="clearInventoryErrors()" minlength="5" maxlength="120" [attr.aria-invalid]="inventoryFieldError('detail') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('detail') ? 'inventory-detail-error' : null"></textarea>
+                  @if (inventoryFieldError("detail"); as error) {<span id="inventory-detail-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+                </label>
+              }
+            }
           </div>
         } @else if (kind === "user") {
           <div class="dialog-grid">

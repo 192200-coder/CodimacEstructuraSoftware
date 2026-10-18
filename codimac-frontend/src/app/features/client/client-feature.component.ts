@@ -4,15 +4,25 @@ import { FormsModule } from "@angular/forms"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
+import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { PublicTracking } from "../../../lib/codimac-api"
+
+const trackingSteps = [
+  { number: 1, label: "Registrado", icon: "checkCircle" },
+  { number: 2, label: "En preparación", icon: "box" },
+  { number: 3, label: "Listo para salir", icon: "checkCircle" },
+  { number: 4, label: "En camino", icon: "truck" },
+  { number: 5, label: "Entregado", icon: "checkCheck" },
+] as const
 
 @Component({
   selector: "codimac-client",
   standalone: true,
-  imports: [FormsModule, IconComponent, DatePipe],
+  imports: [FormsModule, IconComponent, StatusBadgeComponent, DatePipe],
   templateUrl: "./client-feature.component.html",
 })
 export class ClientFeatureComponent {
+  readonly trackingSteps = trackingSteps
   readonly found = signal(false)
   readonly reprogrammed = signal(false)
   readonly deliveryFailed = signal(false)
@@ -21,6 +31,58 @@ export class ClientFeatureComponent {
   readonly code = signal("")
   readonly trackingCode = signal("")
   readonly tracking = signal<PublicTracking | null>(null)
+
+  get trackingTitle(): string {
+    if (this.deliveryFailed()) return "No se pudo completar la entrega"
+    if (this.reprogrammed()) return "Reprogramamos tu entrega"
+    switch (this.tracking()?.public_status) {
+      case "Registrado": return "Tu pedido está registrado"
+      case "En preparación": return "Tu pedido está en preparación"
+      case "Listo para salir": return "Tu pedido está listo para salir"
+      case "En camino": return "Tu pedido está en camino"
+      case "Entregado": return "Tu pedido fue entregado"
+      case "Cancelado": return "Pedido cancelado"
+      default: return "Estado de entrega actualizado"
+    }
+  }
+
+  get trackingMessage(): string {
+    if (this.deliveryFailed()) return "Los intentos de entrega de este reparto finalizaron. El pedido volvió a quedar disponible para coordinación; comunícate con CODIMAC para programar el siguiente paso."
+    if (this.reprogrammed()) return "No pudimos completar la primera visita. Haremos un nuevo intento."
+    switch (this.tracking()?.public_status) {
+      case "Registrado": return "Recibimos tu pedido y pronto comenzaremos a prepararlo."
+      case "En preparación": return "Estamos preparando tu pedido para el despacho."
+      case "Listo para salir": return "Tu pedido está listo y pendiente de iniciar su reparto."
+      case "En camino": return "Estamos llevando tu pedido al destino registrado."
+      case "Entregado": return "La entrega de tu pedido fue completada."
+      case "Cancelado": return "Este pedido fue cancelado. Comunícate con CODIMAC si necesitas más información."
+      default: return "Consulta nuevamente más tarde para ver el estado actualizado."
+    }
+  }
+
+  isCancelled(): boolean {
+    return this.tracking()?.public_status === "Cancelado"
+  }
+
+  isStepDone(step: number): boolean {
+    const tracking = this.tracking()
+    return tracking?.public_status === "Entregado"
+      || (this.reprogrammed() && step < 3)
+      || (tracking?.current_step !== null && tracking?.current_step !== undefined && step < tracking.current_step)
+  }
+
+  isStepActive(step: number): boolean {
+    return (this.tracking()?.current_step === step && this.tracking()?.public_status !== "Entregado")
+      || (this.reprogrammed() && step === 3)
+  }
+
+  stepDescription(step: number): string {
+    const tracking = this.tracking()
+    if (this.reprogrammed() && step === 3) return "Reprogramado"
+    if (tracking?.public_status === "Entregado") return "Completado"
+    if (tracking?.current_step === step) return "Ahora"
+    return tracking?.current_step && tracking.current_step > step ? "Completado" : "Próximamente"
+  }
 
   constructor(
     readonly state: AppStateService,

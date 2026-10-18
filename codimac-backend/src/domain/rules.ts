@@ -1,5 +1,9 @@
 export function hasAvailableStock(total: number, reserved: number, requested: number): boolean {
-  return requested > 0 && total - reserved >= requested
+  return requested > 0 && availableStock(total, reserved) >= requested
+}
+
+export function availableStock(total: number, reserved: number): number {
+  return total - reserved
 }
 
 export function canAdjustStock(total: number, reserved: number, change: number): boolean {

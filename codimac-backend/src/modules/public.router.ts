@@ -3,6 +3,7 @@ import rateLimit from "express-rate-limit"
 import { pool } from "../db/pool.js"
 import { HttpError } from "../http/errors.js"
 import { z } from "zod"
+import { getPortalStep, mapPublicTrackingStatus } from "./public-tracking.js"
 
 export const publicRouter = Router()
 
@@ -18,7 +19,15 @@ publicRouter.get(
     limit: 30,
     standardHeaders: "draft-8",
     legacyHeaders: false,
-    message: { error: "Demasiadas consultas. Intenta nuevamente en un minuto." },
+    handler: (_req, res) => {
+      res.status(429).json({
+        error: {
+          code: "RATE_LIMITED",
+          message: "Demasiadas consultas. Intenta nuevamente en un minuto.",
+          fields: [],
+        },
+      })
+    },
   }),
   async (req, res) => {
     const parsedToken = z.uuid().safeParse(req.params.token)
@@ -27,17 +36,12 @@ publicRouter.get(
     }
     const reference = parsedToken.data
     const result = await pool.query(
-      `SELECT o.code,
-        CASE WHEN s.status='No entregada' THEN 'No entregada'
-             WHEN s.status='Incidencia' THEN 'Reprogramado'
-             WHEN o.status IN ('Pendiente','En preparación','Listo') THEN 'Registrado'
-             WHEN o.status='En ruta' THEN 'En camino'
-             WHEN o.status='Entregado' THEN 'Entregado' ELSE 'Registrado' END AS public_status,
-        CASE WHEN s.status='No entregada' THEN NULL ELSE s.sequence_number END AS position,
+      `SELECT o.codigo AS code,
+        o.status AS order_status,
+        s.sequence_number AS position,
         s.status AS stop_status,
-        CASE WHEN s.status='No entregada' THEN 0
-             ELSE (SELECT count(*)::int FROM route_stops rs WHERE rs.route_id=s.route_id) END AS total_stops,
-        CASE WHEN s.status='No entregada' THEN NULL ELSE s.eta_at END AS eta_at
+        (SELECT count(*)::int FROM route_stops rs WHERE rs.route_id=s.route_id) AS total_stops,
+        s.eta_at
        FROM orders o LEFT JOIN route_stops s ON s.order_id=o.id
        LEFT JOIN routes r ON r.id=s.route_id
        WHERE o.tracking_token=$1
@@ -45,6 +49,19 @@ publicRouter.get(
       [reference],
     )
     if (!result.rowCount) throw new HttpError(404, "No encontramos un pedido asociado a ese código privado")
-    res.json({ tracking: result.rows[0] })
+    const order = result.rows[0]
+    const publicStatus = mapPublicTrackingStatus(order.order_status, order.stop_status)
+    const tracking = {
+      code: order.code,
+      public_status: publicStatus,
+      current_step: getPortalStep(publicStatus),
+      stop_status: order.stop_status,
+      ...(publicStatus === "En camino" && {
+        position: order.position,
+        total_stops: order.total_stops,
+        eta_at: order.eta_at,
+      }),
+    }
+    res.json({ tracking })
   },
 )

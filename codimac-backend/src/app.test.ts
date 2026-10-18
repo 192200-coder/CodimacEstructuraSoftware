@@ -54,8 +54,12 @@ describe("API CODIMAC", () => {
   it("explica cuando el código de trazabilidad no tiene formato UUID", async () => {
     const response = await fetch(`${baseUrl}/api/tracking/COD-101`)
     expect(response.status).toBe(400)
-    expect(await response.json()).toEqual({
-      error: "El código privado de seguimiento tiene un formato inválido",
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "VALIDATION_ERROR",
+        message: "El código privado de seguimiento tiene un formato inválido",
+        fields: [],
+      },
     })
   })
 
@@ -65,15 +69,25 @@ describe("API CODIMAC", () => {
       `${baseUrl}/api/tracking/50000000-0000-4000-8000-000000000001`,
     )
     expect(response.status).toBe(404)
-    expect(await response.json()).toEqual({
-      error: "No encontramos un pedido asociado a ese código privado",
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "NOT_FOUND",
+        message: "No encontramos un pedido asociado a ese código privado",
+        fields: [],
+      },
     })
   })
 
   it("requiere sesión para las operaciones privadas", async () => {
     const response = await fetch(`${baseUrl}/api/orders`)
     expect(response.status).toBe(401)
-    expect(await response.json()).toMatchObject({ error: "Autenticación requerida" })
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "UNAUTHENTICATED",
+        message: "Autenticación requerida",
+        fields: [],
+      },
+    })
   })
 
   it("rechaza credenciales incorrectas sin filtrar datos de usuario", async () => {
@@ -84,7 +98,13 @@ describe("API CODIMAC", () => {
       body: JSON.stringify({ email: "no-existe@codimac.pe", password: "incorrecta" }),
     })
     expect(response.status).toBe(401)
-    expect(await response.json()).toEqual({ error: "Correo o contraseña incorrectos" })
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: "UNAUTHENTICATED",
+        message: "Correo o contraseña incorrectos",
+        fields: [],
+      },
+    })
   })
 
   it("inicia sesión, valida el perfil en cada solicitud y revoca el token al cerrar", async () => {

@@ -43,7 +43,9 @@ export function liberarStock(lineas: LineaPedido[], existencias: Existencia[]) {
   return [...porProducto.values()]
 }
 
-export function pesoTotalKg(lineas: LineaPedido[]) {
+export function pesoTotalKg(
+  lineas: Array<Pick<LineaPedido, "cantidad" | "pesoUnitarioKg">>,
+) {
   return lineas.reduce(
     (total, linea) => total + linea.cantidad * linea.pesoUnitarioKg,
     0,

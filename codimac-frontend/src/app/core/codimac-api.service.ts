@@ -14,6 +14,7 @@ import {
   getRoutes,
   getCatalog,
   getAdminEvents,
+  getAdminAuditEvents,
   getNotifications,
   getAdminUsers,
   getIndicators,
@@ -34,6 +35,7 @@ import {
   type RemoteNotification,
   type PublicTracking,
 } from "../../lib/codimac-api"
+import type { InventoryMovementRequest } from "../../lib/codimac-api"
 
 @Injectable({ providedIn: "root" })
 export class CodimacApiService {
@@ -43,6 +45,10 @@ export class CodimacApiService {
 
   getAdminEvents() {
     return getAdminEvents()
+  }
+
+  getAdminAuditEvents(filters: Parameters<typeof getAdminAuditEvents>[0] = {}) {
+    return getAdminAuditEvents(filters)
   }
 
   getNotifications(): Promise<RemoteNotification[]> {
@@ -97,16 +103,15 @@ export class CodimacApiService {
     return updateCatalogRecord(resource, id, value)
   }
 
-  adjustInventory(productId: string, value: { quantity: number; type: "Entrada" | "Ajuste"; reason: string }): Promise<unknown> {
+  adjustInventory(productId: string, value: InventoryMovementRequest): Promise<unknown> {
     return adjustInventory(productId, value)
   }
 
   createOrder(value: {
-    code: string
     clientId: string
     deadlineAt: string | null
     items: Array<{ productId: string; quantity: number }>
-  }): Promise<unknown> {
+  }): ReturnType<typeof createOrder> {
     return createOrder(value)
   }
 
@@ -138,7 +143,7 @@ export class CodimacApiService {
     return getRoutes()
   }
 
-  createRoute(input: Parameters<typeof createRoute>[0]): Promise<unknown> {
+  createRoute(input: Parameters<typeof createRoute>[0]): ReturnType<typeof createRoute> {
     return createRoute(input)
   }
 

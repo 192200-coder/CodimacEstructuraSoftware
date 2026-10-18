@@ -2,7 +2,6 @@ import { Injectable, signal } from "@angular/core"
 import {
   checkBackendHealth,
   codimacAuth,
-  logAuditEvent,
   savePreferences,
 } from "../../lib/codimac-api"
 import { roleNavigation } from "./models"
@@ -55,11 +54,6 @@ export class AppStateService {
     this.toast.set(message)
     if (this.toastTimer !== undefined) window.clearTimeout(this.toastTimer)
     this.toastTimer = window.setTimeout(() => this.toast.set(""), duration)
-    if (localStorage.getItem("codimac-access-token")) {
-      void logAuditEvent(message).catch((error: unknown) => {
-        console.error("No se pudo guardar el evento de auditoría.", error)
-      })
-    }
   }
 
   action(message: string): void {

@@ -6,6 +6,7 @@ import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { RemoteOrder } from "../../../lib/codimac-api"
 import { prioridadPorFechaLimite } from "../../../dominio/prioridad-pedido"
+import { matchesCodeSearch } from "../../../dominio/busqueda-codigo"
 
 interface OrderRow {
   code: string
@@ -63,7 +64,11 @@ export class OrdersPageComponent {
     })
     const query = this.search().trim().toLowerCase()
     return rows.filter((row) => {
-      if (query && !`${row.code} ${row.client} ${row.status}`.toLowerCase().includes(query)) return false
+      if (
+        query &&
+        !matchesCodeSearch(row.code, query) &&
+        !`${row.client} ${row.status}`.toLowerCase().includes(query)
+      ) return false
       if (this.statusFilter() !== "Todos los estados" && row.status !== this.statusFilter()) return false
       if (this.priorityFilter() !== "Todas las prioridades" && row.priority !== this.priorityFilter()) return false
       if (this.dateFilter() !== "Cualquier fecha") {

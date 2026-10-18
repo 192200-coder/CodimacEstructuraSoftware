@@ -12,8 +12,8 @@
         <thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Prioridad</th><th>Fecha límite</th><th></th></tr></thead>
         <tbody>
           @for (row of rows; track row.code) {
-            <tr [class.selected-row]="selectedCode() === row.code" (click)="selectedCode.set(row.code)">
-              <td><strong>{{ row.code }}</strong></td><td>{{ row.client }}</td><td><codimac-status [status]="row.status" /></td>
+            <tr [class.selected-row]="selectedCode() === row.code" [class.cancelled-order-row]="row.status === 'Cancelado'" (click)="selectedCode.set(row.code)">
+              <td><strong [class.cancelled-order-code]="row.status === 'Cancelado'">{{ row.code }}</strong></td><td>{{ row.client }}</td><td><codimac-status [status]="row.status" /></td>
               <td><span class="priority" [class.alta]="row.priority === 'Alta'">{{ row.priority }}</span></td><td>{{ row.deadline }}</td><td><codimac-icon name="chevron" [size]="15" /></td>
             </tr>
           } @empty {
@@ -28,7 +28,7 @@
   }
   <aside class="card detail-panel">
     @if (selectedRemote; as order) {
-      <div class="card-header"><div><p class="section-kicker">DETALLE DE PEDIDO</p><h2>{{ order.code }}</h2></div><codimac-status [status]="order.status" /></div>
+      <div class="card-header"><div><p class="section-kicker">DETALLE DE PEDIDO</p><h2 [class.cancelled-order-code]="order.status === 'Cancelado'">{{ order.code }}</h2></div><codimac-status [status]="order.status" /></div>
       <dl class="detail-list"><div><dt>Cliente</dt><dd>{{ order.clients?.name ?? "Cliente" }}</dd></div><div><dt>Entrega</dt><dd>{{ order.deadline_at ? (order.deadline_at | date:"short") : "Sin fecha límite" }}</dd></div><div><dt>Dirección</dt><dd>{{ order.clients?.address ?? "Sin dirección" }}</dd></div></dl>
       <div class="tracking-token-detail">
         <span>Código privado de seguimiento</span>

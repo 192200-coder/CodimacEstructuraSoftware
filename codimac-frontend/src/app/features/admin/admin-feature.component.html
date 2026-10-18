@@ -18,7 +18,38 @@
     <div class="card"><p class="section-kicker">UBICACIÓN</p><h2>Almacén principal</h2><div class="mini-map large"><div class="map-road one"></div><div class="map-road two"></div><span><codimac-icon name="pin" [size]="24" /></span></div><label class="setting-field">Latitud<input type="number" step="0.000001" [(ngModel)]="warehouseLatitude" /></label><label class="setting-field">Longitud<input type="number" step="0.000001" [(ngModel)]="warehouseLongitude" /></label></div>
     <div class="card"><p class="section-kicker">COSTOS Y TIEMPOS</p><h2>Parámetros de ruta</h2>@if (!parametersConfigured) {<p>Aún no hay parámetros guardados en el backend.</p>}<label class="setting-field">Combustible por litro<input type="number" min="0.01" step="0.01" [(ngModel)]="fuelPrice" /></label><label class="setting-field">Minutos por parada<input type="number" min="0" step="1" [(ngModel)]="minutesPerStop" /></label><button class="button primary" type="button" (click)="saveParameters()">Guardar cambios</button></div>
   </section>
-} @else if (state.active() === "Historial" || state.active() === "Auditoría") {
+} @else if (state.active() === "Auditoría") {
+  <section class="card module-card">
+    <form class="filterbar audit-filters" (ngSubmit)="applyAuditFilters()">
+      <label>Desde<input name="auditDesde" type="datetime-local" [(ngModel)]="auditDesde" /></label>
+      <label>Hasta<input name="auditHasta" type="datetime-local" [(ngModel)]="auditHasta" /></label>
+      <label>Usuario<input name="auditUsuario" type="search" placeholder="Nombre o correo" [(ngModel)]="auditUsuario" /></label>
+      <label>Entidad<select name="auditEntidad" [(ngModel)]="auditEntidad">
+        <option value="">Todas</option><option>Pedido</option><option>Parada</option><option>Ruta</option>
+        <option>Inventario</option><option>Usuario</option><option>Parámetros</option><option>Autenticación</option>
+      </select></label>
+      <label>Acción exacta<input name="auditAccion" type="search" [(ngModel)]="auditAccion" /></label>
+      <button class="button primary" type="submit">Filtrar</button>
+    </form>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID</th><th>Valor anterior</th><th>Valor nuevo</th>
+    </tr></thead><tbody>
+      @for (event of auditEvents(); track event.id) {
+        <tr>
+          <td>{{ event.fecha_hora | date:"short":"America/Lima" }}</td>
+          <td>{{ event.usuario ?? event.email ?? "Intento anónimo" }}</td>
+          <td>{{ event.accion }}</td><td>{{ event.entidad }}</td><td>{{ event.entidad_id ?? "—" }}</td>
+          <td>{{ formatAuditValue(event.valor_anterior) }}</td><td>{{ formatAuditValue(event.valor_nuevo) }}</td>
+        </tr>
+      } @empty { <tr><td colspan="7">No hay eventos de auditoría para estos filtros.</td></tr> }
+    </tbody></table></div>
+    <div class="filterbar">
+      <span>{{ auditTotal() }} eventos · {{ auditTotal() ? auditOffset() + 1 : 0 }}–{{ auditPageEnd }}</span>
+      <button class="button secondary" type="button" [disabled]="auditOffset() === 0" (click)="previousAuditPage()">Anterior</button>
+      <button class="button secondary" type="button" [disabled]="auditOffset() + auditLimit >= auditTotal()" (click)="nextAuditPage()">Siguiente</button>
+    </div>
+  </section>
+} @else if (state.active() === "Historial") {
   <section class="card module-card">
     <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar" [placeholder]="'Buscar en ' + state.active().toLowerCase()" /></div><button class="button primary" type="button" (click)="openCreateDialog()">{{ state.active() === "Auditoría" ? "Exportar" : "Filtrar" }}</button></div>
     <div class="table-wrap"><table><thead><tr>@for (header of tableData['Auditoría'].headers; track header) {<th>{{ header }}</th>}</tr></thead><tbody>@for (row of tableData['Auditoría'].rows; track row[0]) {<tr>@for (cell of row; track $index) {<td>{{ cell }}</td>}</tr>} @empty {<tr><td colspan="4">No hay movimientos registrados.</td></tr>}</tbody></table></div>

@@ -1,9 +1,11 @@
+import { DatePipe } from "@angular/common"
 import { Component, effect, signal } from "@angular/core"
 import { FormsModule } from "@angular/forms"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
+import type { AuditEvent } from "../../../lib/codimac-api"
 
 interface RouteParameters {
   warehouse_latitude: string | number
@@ -15,12 +17,21 @@ interface RouteParameters {
 @Component({
   selector: "codimac-admin",
   standalone: true,
-  imports: [FormsModule, IconComponent, StatusBadgeComponent],
+  imports: [DatePipe, FormsModule, IconComponent, StatusBadgeComponent],
   templateUrl: "./admin-feature.component.html",
 })
 export class AdminFeatureComponent {
   readonly loadingDemoData = signal(false)
   readonly editingId = signal("")
+  readonly auditEvents = signal<AuditEvent[]>([])
+  readonly auditTotal = signal(0)
+  readonly auditOffset = signal(0)
+  readonly auditLimit = 25
+  auditDesde = ""
+  auditHasta = ""
+  auditUsuario = ""
+  auditEntidad = ""
+  auditAccion = ""
   editName = ""
   editRole = "Despachador"
   editActive = true
@@ -86,6 +97,10 @@ export class AdminFeatureComponent {
 
   get selectedData() {
     return this.tableData[this.state.active()]
+  }
+
+  get auditPageEnd(): number {
+    return Math.min(this.auditOffset() + this.auditLimit, this.auditTotal())
   }
 
   openCreateDialog(): void {
@@ -196,6 +211,44 @@ export class AdminFeatureComponent {
     this.editingId.set("")
   }
 
+  applyAuditFilters(): void {
+    this.auditOffset.set(0)
+    void this.loadAuditEvents()
+  }
+
+  previousAuditPage(): void {
+    this.auditOffset.update((offset) => Math.max(0, offset - this.auditLimit))
+    void this.loadAuditEvents()
+  }
+
+  nextAuditPage(): void {
+    if (this.auditOffset() + this.auditLimit >= this.auditTotal()) return
+    this.auditOffset.update((offset) => offset + this.auditLimit)
+    void this.loadAuditEvents()
+  }
+
+  formatAuditValue(value: Record<string, unknown> | null): string {
+    return value === null ? "—" : JSON.stringify(value)
+  }
+
+  private async loadAuditEvents(): Promise<void> {
+    try {
+      const { events, total } = await this.api.getAdminAuditEvents({
+        desde: this.auditDesde ? new Date(this.auditDesde).toISOString() : undefined,
+        hasta: this.auditHasta ? new Date(this.auditHasta).toISOString() : undefined,
+        usuario: this.auditUsuario.trim() || undefined,
+        entidad: this.auditEntidad || undefined,
+        accion: this.auditAccion.trim() || undefined,
+        limit: this.auditLimit,
+        offset: this.auditOffset(),
+      })
+      this.auditEvents.set(events)
+      this.auditTotal.set(total)
+    } catch (error) {
+      this.state.showToast(error instanceof Error ? error.message : "No se pudo cargar la auditoría.")
+    }
+  }
+
   private vehicleRecords: Array<{
     id: string
     averageSpeedKmh: number
@@ -250,7 +303,9 @@ export class AdminFeatureComponent {
           `${vehicle.capacity_kg} kg`,
           vehicle.available ? "Disponible" : "No disponible",
         ])
-      } else if (section === "Auditoría" || section === "Historial") {
+      } else if (section === "Auditoría") {
+        await this.loadAuditEvents()
+      } else if (section === "Historial") {
         const { events } = await this.api.getAdminEvents()
         this.tableData["Auditoría"].rows = events.map((event) => [
           new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(new Date(event.created_at)),

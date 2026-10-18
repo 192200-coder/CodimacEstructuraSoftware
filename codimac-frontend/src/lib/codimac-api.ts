@@ -2,6 +2,42 @@ const apiUrl = "/api"
 const tokenKey = "codimac-access-token"
 const userKey = "codimac-auth-user"
 
+export interface ApiErrorField {
+  field: string
+  code: string
+  message: string
+}
+
+export type InventoryAdjustmentReason =
+  | "Conteo físico"
+  | "Merma o daño"
+  | "Corrección de registro"
+  | "Otro"
+
+export type InventoryMovementRequest =
+  | {
+      type: "Entrada"
+      quantity: number
+      observation?: string
+    }
+  | {
+      type: "Ajuste"
+      quantity: number
+      direction: "Aumentar" | "Disminuir"
+      reason: InventoryAdjustmentReason
+      detail?: string
+    }
+
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+    readonly fields: ApiErrorField[],
+  ) {
+    super(message)
+  }
+}
+
 export interface ApiUser {
   id: string
   email: string
@@ -60,7 +96,19 @@ async function request<T = Record<string, unknown>>(
   const response = await fetch(`${apiUrl}${path}`, { ...options, headers })
   const body = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(body?.error ?? "No se pudo conectar con CODIMAC")
+    const apiError = body?.error
+    if (apiError && typeof apiError === "object") {
+      throw new ApiRequestError(
+        typeof apiError.message === "string" ? apiError.message : "No se pudo completar la solicitud.",
+        typeof apiError.code === "string" ? apiError.code : "UNKNOWN_ERROR",
+        Array.isArray(apiError.fields) ? apiError.fields : [],
+      )
+    }
+    throw new ApiRequestError(
+      typeof apiError === "string" ? apiError : "No se pudo conectar con CODIMAC",
+      "UNKNOWN_ERROR",
+      [],
+    )
   }
   return body as T
 }
@@ -204,10 +252,19 @@ export interface RemoteNotification {
 
 export interface PublicTracking {
   code: string
-  public_status: "Registrado" | "En camino" | "Reprogramado" | "No entregada" | "Entregado"
-  position: number | null
-  total_stops: number
-  eta_at: string | null
+  public_status:
+    | "Registrado"
+    | "En preparación"
+    | "Listo para salir"
+    | "En camino"
+    | "Reprogramado"
+    | "No entregada"
+    | "Entregado"
+    | "Cancelado"
+  current_step: 1 | 2 | 3 | 4 | 5 | null
+  position?: number | null
+  total_stops?: number
+  eta_at?: string | null
   stop_status: string | null
 }
 
@@ -232,10 +289,6 @@ export async function getRemoteState() {
 
 export async function savePreferences(preferences: { role: string; active: string }) {
   return request("/preferences", { method: "PUT", body: JSON.stringify(preferences) })
-}
-
-export async function logAuditEvent(message: string) {
-  return request("/events", { method: "POST", body: JSON.stringify({ message }) })
 }
 
 export async function getOrders(): Promise<RemoteOrder[]> {
@@ -273,7 +326,6 @@ export async function getRoutes(): Promise<RemoteRouteSummary[]> {
 }
 
 export async function createRoute(input: {
-  code: string
   orderIds: string[]
   distanceKm: number
   estimatedMinutes: number
@@ -281,7 +333,7 @@ export async function createRoute(input: {
   estimatedCost: number
   driverId?: string
   vehicleId?: string
-}) {
+}): Promise<{ routeId: string; code: string; status: string }> {
   return request("/routes", { method: "POST", body: JSON.stringify(input) })
 }
 
@@ -359,12 +411,11 @@ export async function updateAdminUser(
   return request(`/admin/users/${id}`, { method: "PUT", body: JSON.stringify(value) })
 }
 
-export async function adjustInventory(productId: string, value: { quantity: number; type: "Entrada" | "Ajuste"; reason: string }) {
+export async function adjustInventory(productId: string, value: InventoryMovementRequest) {
   return request(`/inventory/${productId}/movements`, { method: "POST", body: JSON.stringify(value) })
 }
 
 export async function createOrder(value: {
-  code: string
   clientId: string
   deadlineAt: string | null
   items: Array<{ productId: string; quantity: number }>
@@ -378,6 +429,43 @@ export async function getAdminUsers() {
 
 export async function getAdminEvents() {
   return request<{ events: Array<{ id: string; message: string; created_at: string; user: string; role: string }> }>("/admin/events")
+}
+
+export interface AuditEventFilters {
+  desde?: string
+  hasta?: string
+  usuario?: string
+  entidad?: string
+  accion?: string
+  limit?: number
+  offset?: number
+}
+
+export interface AuditEvent {
+  id: string
+  fecha_hora: string
+  usuario_id: string | null
+  usuario: string | null
+  email: string | null
+  accion: string
+  entidad: string
+  entidad_id: string | null
+  valor_anterior: Record<string, unknown> | null
+  valor_nuevo: Record<string, unknown> | null
+}
+
+export async function getAdminAuditEvents(filters: AuditEventFilters = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== "") query.set(key, String(value))
+  }
+  const suffix = query.size ? `?${query.toString()}` : ""
+  return request<{
+    events: AuditEvent[]
+    total: number
+    limit: number
+    offset: number
+  }>(`/admin/audit${suffix}`)
 }
 
 export async function loadDemoData() {

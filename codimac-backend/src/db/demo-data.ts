@@ -1,5 +1,5 @@
 import type { PoolClient } from "pg"
-import { hashPassword } from "../http/auth.js"
+import { formatSequentialCode } from "../application/sequential-code.js"
 
 const demoUsers = [
   { id: "90000000-0000-4000-8000-000000000001", email: "maria@codimac.pe", name: "María Quispe", role: "Despachador" },
@@ -7,7 +7,10 @@ const demoUsers = [
   { id: "90000000-0000-4000-8000-000000000003", email: "jose@codimac.pe", name: "José Ramírez", role: "Administrador" },
 ] as const
 
-export async function loadDemoData(client: PoolClient): Promise<void> {
+export async function loadDemoData(
+  client: PoolClient,
+  hashPassword: (password: string) => Promise<string>,
+): Promise<void> {
   for (const user of demoUsers) {
     await client.query(
       `INSERT INTO profiles(id,email,password_hash,display_name,role)
@@ -37,15 +40,18 @@ export async function loadDemoData(client: PoolClient): Promise<void> {
 
   const createdBy = demoUsers[0].id
   const orders = [
-    { id: "40000000-0000-4000-8000-000000000001", code: "COD-101", token: "50000000-0000-4000-8000-000000000001", client: "10000000-0000-4000-8000-000000000001", deadline: "2026-10-20T17:30:00-05:00" },
-    { id: "40000000-0000-4000-8000-000000000002", code: "COD-102", token: "50000000-0000-4000-8000-000000000002", client: "10000000-0000-4000-8000-000000000002", deadline: "2026-10-20T14:00:00-05:00" },
-    { id: "40000000-0000-4000-8000-000000000003", code: "COD-103", token: "50000000-0000-4000-8000-000000000003", client: "10000000-0000-4000-8000-000000000003", deadline: "2026-10-21T10:00:00-05:00" },
+    { id: "40000000-0000-4000-8000-000000000001", token: "50000000-0000-4000-8000-000000000001", client: "10000000-0000-4000-8000-000000000001", deadline: "2026-10-20T17:30:00-05:00" },
+    { id: "40000000-0000-4000-8000-000000000002", token: "50000000-0000-4000-8000-000000000002", client: "10000000-0000-4000-8000-000000000002", deadline: "2026-10-20T14:00:00-05:00" },
+    { id: "40000000-0000-4000-8000-000000000003", token: "50000000-0000-4000-8000-000000000003", client: "10000000-0000-4000-8000-000000000003", deadline: "2026-10-21T10:00:00-05:00" },
   ]
   for (const order of orders) {
+    const existing = await client.query("SELECT 1 FROM orders WHERE id=$1", [order.id])
+    if (existing.rowCount) continue
+    const sequence = await client.query("SELECT nextval('order_code_seq') AS value")
     await client.query(
-      `INSERT INTO orders(id,code,tracking_token,client_id,deadline_at,created_by)
-       VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT(id) DO NOTHING`,
-      [order.id, order.code, order.token, order.client, order.deadline, createdBy],
+      `INSERT INTO orders(id,codigo,tracking_token,client_id,deadline_at,created_by)
+       VALUES($1,$2,$3,$4,$5,$6)`,
+      [order.id, formatSequentialCode("PED", Number(sequence.rows[0].value)), order.token, order.client, order.deadline, createdBy],
     )
   }
   await client.query(

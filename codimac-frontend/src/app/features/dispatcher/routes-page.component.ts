@@ -6,7 +6,10 @@ import type { RemoteOrder } from "../../../lib/codimac-api"
 import type { RemoteRouteSummary } from "../../../lib/codimac-api"
 import type { CriterioRuta } from "../../../dominio/modelos"
 import { generarAlternativas } from "../../../dominio/rutas"
-import { distanciaLocalKm } from "../../../dominio/rutas"
+import {
+  calcularAvisosFechaLimite,
+  calcularPesoPedidosKg,
+} from "../../../dominio/planificacion-ruta-ui"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 
@@ -128,33 +131,17 @@ export class RoutesPageComponent implements OnDestroy {
       (resource) => resource.id === this.selectedVehicleId(),
     )
     if (!route || !parameters || !vehicle?.average_speed_kmh) return []
-
-    let current = {
-      latitud: Number(parameters.warehouse_latitude),
-      longitud: Number(parameters.warehouse_longitude),
-    }
-    let elapsedMinutes = 0
-    const now = Date.now()
-    const orderById = new Map(this.selectedOrders.map((order) => [order.id, order]))
-    const warnings: string[] = []
-    for (const orderId of route.orderIds) {
-      const order = orderById.get(orderId)
-      const client = order?.clients
-      if (client?.latitude === undefined || client.longitude === undefined) continue
-      const destination = {
-        latitud: Number(client.latitude),
-        longitud: Number(client.longitude),
-      }
-      elapsedMinutes +=
-        (distanciaLocalKm(current, destination) / Number(vehicle.average_speed_kmh)) * 60
-      const eta = now + elapsedMinutes * 60_000
-      if (order?.deadline_at && eta > new Date(order.deadline_at).getTime()) {
-        warnings.push(`${order.code} · ${client.name}`)
-      }
-      elapsedMinutes += Number(parameters.minutes_per_stop)
-      current = destination
-    }
-    return warnings
+    return calcularAvisosFechaLimite({
+      orderIds: route.orderIds,
+      orders: this.selectedOrders,
+      origin: {
+        latitud: Number(parameters.warehouse_latitude),
+        longitud: Number(parameters.warehouse_longitude),
+      },
+      averageSpeedKmh: Number(vehicle.average_speed_kmh),
+      minutesPerStop: Number(parameters.minutes_per_stop),
+      now: new Date(),
+    })
   }
 
   get selectedOrders(): RemoteOrder[] {
@@ -221,13 +208,7 @@ export class RoutesPageComponent implements OnDestroy {
   }
 
   get selectedWeightKg(): number {
-    return this.selectedOrders.reduce(
-      (total, order) => total + (order.order_items ?? []).reduce(
-        (orderWeight, item) => orderWeight + Number(item.quantity) * Number(item.products.weight_kg),
-        0,
-      ),
-      0,
-    )
+    return calcularPesoPedidosKg(this.selectedOrders)
   }
 
   get selectedVehicleCapacity(): number | undefined {
@@ -333,10 +314,8 @@ export class RoutesPageComponent implements OnDestroy {
     this.loading.set(true)
     try {
       if (!this.routeId()) {
-        const code = `R-${Date.now()}`
         this.selectedOrderIds.set(alternative.orderIds)
         const result = await this.api.createRoute({
-          code,
           orderIds: alternative.orderIds,
           distanceKm: alternative.distanceKm,
           estimatedMinutes: alternative.estimatedMinutes,
@@ -344,9 +323,9 @@ export class RoutesPageComponent implements OnDestroy {
           estimatedCost: alternative.estimatedCost,
           driverId: this.selectedDriverId(),
           vehicleId: this.selectedVehicleId(),
-        }) as { routeId: string; status: string }
+        })
         this.routeId.set(result.routeId)
-        this.routeCode.set(code)
+        this.routeCode.set(result.code)
         this.plannedVehicleId.set(this.selectedVehicleId())
       } else {
         await this.api.assignRoute(this.routeId(), this.selectedDriverId(), this.selectedVehicleId())

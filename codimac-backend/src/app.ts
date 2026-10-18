@@ -3,13 +3,25 @@ import express from "express"
 import helmet from "helmet"
 import rateLimit from "express-rate-limit"
 import { config } from "./config.js"
+import { BcryptPasswordHasher } from "./adapters/bcrypt-password-hasher.js"
+import { PostgresCatalogRepository } from "./adapters/postgres-catalog-repository.js"
+import { PostgresRouteRepository } from "./adapters/postgres-route-repository.js"
+import { createCatalogUseCases } from "./application/catalog.js"
+import { createRouteUseCases } from "./application/routes.js"
 import { errorHandler, HttpError } from "./http/errors.js"
 import { authRouter } from "./modules/auth.router.js"
-import { catalogRouter } from "./modules/catalog.router.js"
+import { createCatalogRouter } from "./modules/catalog.router.js"
 import { ordersRouter } from "./modules/orders.router.js"
 import { publicRouter } from "./modules/public.router.js"
-import { routesRouter } from "./modules/routes.router.js"
+import { createRoutesRouter } from "./modules/routes.router.js"
 import { sharedRouter } from "./modules/shared.router.js"
+
+const passwordHasher = new BcryptPasswordHasher()
+const catalogUseCases = createCatalogUseCases(
+  new PostgresCatalogRepository(passwordHasher),
+  passwordHasher,
+)
+const routeUseCases = createRouteUseCases(new PostgresRouteRepository())
 
 export const app = express()
 app.disable("x-powered-by")
@@ -31,6 +43,15 @@ app.use(rateLimit({
   limit: 300,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: {
+        code: "RATE_LIMITED",
+        message: "Demasiadas solicitudes. Intenta nuevamente más tarde.",
+        fields: [],
+      },
+    })
+  },
 }))
 
 app.use("/", publicRouter)
@@ -39,11 +60,20 @@ app.use("/api/auth", rateLimit({
   limit: 20,
   standardHeaders: "draft-8",
   legacyHeaders: false,
+  handler: (_req, res) => {
+    res.status(429).json({
+      error: {
+        code: "RATE_LIMITED",
+        message: "Demasiados intentos. Intenta nuevamente más tarde.",
+        fields: [],
+      },
+    })
+  },
 }), authRouter)
 app.use("/api", sharedRouter)
 app.use("/api/orders", ordersRouter)
-app.use("/api", catalogRouter)
-app.use("/api", routesRouter)
+app.use("/api", createCatalogRouter(catalogUseCases))
+app.use("/api", createRoutesRouter(routeUseCases))
 
 app.use((_req, _res, next) => next(new HttpError(404, "Recurso no encontrado")))
 app.use(errorHandler)

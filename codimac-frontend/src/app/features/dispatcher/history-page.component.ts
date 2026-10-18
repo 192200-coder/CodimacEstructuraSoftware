@@ -5,6 +5,7 @@ import { CodimacApiService } from "../../core/codimac-api.service"
 import type { RemoteRouteSummary } from "../../../lib/codimac-api"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
+import { matchesCodeSearch } from "../../../dominio/busqueda-codigo"
 
 @Component({
   selector: "codimac-history-page",
@@ -31,9 +32,9 @@ export class HistoryPageComponent {
     const query = this.search().trim().toLocaleLowerCase()
     return query
       ? this.routes().filter((route) => route.status === "Cerrada").filter((route) =>
-          `${route.code} ${route.driver_name ?? ""} ${route.vehicle_plate ?? ""}`
-            .toLocaleLowerCase()
-            .includes(query),
+          matchesCodeSearch(route.code, query) ||
+          `${route.driver_name ?? ""} ${route.vehicle_plate ?? ""}`
+            .toLocaleLowerCase().includes(query),
         )
       : this.routes().filter((route) => route.status === "Cerrada")
   }
