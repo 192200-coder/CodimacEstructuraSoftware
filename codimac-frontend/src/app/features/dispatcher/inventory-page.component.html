@@ -1,0 +1,13 @@
+<section class="card module-card">
+  <div class="filterbar">
+    <div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar producto" placeholder="Buscar producto" [value]="search()" (input)="setSearch($event)" /></div>
+    <button class="button primary" type="button" (click)="state.action('Panel de entrada de inventario abierto')"><codimac-icon name="plus" [size]="17" /> Registrar entrada</button>
+  </div>
+  <div class="inventory-summary"><div><span>Valor de inventario</span><strong>No disponible</strong></div><div><span>Unidades reservadas</span><strong>{{ reservedUnits }}</strong></div><div><span>Productos sin stock</span><strong class="warning-text">{{ outOfStockCount }}</strong></div></div>
+  <div class="table-wrap">
+    <table><thead><tr><th>Producto</th><th>Unidad</th><th>Existencias</th><th>Reservadas</th><th>Disponibles</th><th>Estado</th></tr></thead>
+      <tbody>@for (product of products; track product.id) {<tr><td><strong>{{ product.name }}</strong></td><td>{{ product.unit }}</td><td>{{ product.total }}</td><td>{{ product.reserved }}</td><td><strong>{{ product.available }}</strong></td><td><codimac-status [status]="product.available <= 0 ? 'Sin stock' : 'Disponible'" /></td></tr>} @empty {<tr><td colspan="6">{{ remoteLoaded() ? "No hay productos registrados." : "Cargando inventario…" }}</td></tr>}</tbody>
+    </table>
+  </div>
+  <button class="button secondary adjust-button" type="button" (click)="state.action('Formulario de ajuste de existencias abierto')">Ajustar existencias</button>
+</section>

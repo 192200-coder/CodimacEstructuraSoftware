@@ -1,0 +1,48 @@
+# Historical frontend-only migration snapshot. Supabase has since been replaced
+# by the sibling Express/Neon backend; use docs/arquitectura.md and
+# ../../../../../codimac-backend/README.md for current scope.
+user_intent:
+  raw_request: "Convert the React project to Angular and organize it modularly."
+  inferred_acceptance:
+    - "The browser runs the frontend through Angular rather than React."
+    - "The existing CODIMAC roles, screens, and business behavior remain available."
+    - "Existing domain rules, Supabase API, and database behavior remain compatible."
+  cleanup_required: true
+strategy: minimal_runtime
+runtime_reachable:
+  - src/main.tsx
+  - src/App.tsx
+  - src/index.css
+  - src/lib/supabase.ts
+  - utils/supabase/info.tsx
+must_rewrite:
+  - path: src/main.tsx
+    reason: "Current React root bootstrap; Angular needs its own browser bootstrap."
+  - path: src/App.tsx
+    reason: "Contains the complete React UI and role-specific workflows."
+  - path: index.html
+    reason: "Loads the React entrypoint and declares the React root element."
+  - path: package.json
+    reason: "Build and runtime dependencies currently require React and Vite."
+  - path: tsconfig.json
+    reason: "Compiler options currently enable JSX and Vite module resolution."
+  - path: vite.config.ts
+    reason: "The current build pipeline loads the React plugin."
+copy_as_is:
+  - src/dominio/
+  - src/aplicacion/
+  - src/adaptadores/
+  - src/lib/supabase.ts
+  - utils/supabase/info.tsx
+  - supabase/functions/
+  - supabase/migrations/
+legacy_allowed_to_remain:
+  - .figma/
+  - docs/
+defer_cleanup:
+  - "Remove Figma-specific configuration only if the Angular preview/deployment workflow no longer consumes it."
+full_rewrite_reason: null
+implementation_rule: >
+  Rewrite the frontend runtime boundary only. Preserve the domain, persistence,
+  Supabase Edge API, SQL schema, and existing REST contracts; do not expand the
+  request into a backend migration.

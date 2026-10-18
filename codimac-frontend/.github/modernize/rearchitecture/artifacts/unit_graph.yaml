@@ -1,0 +1,15 @@
+units:
+  - name: codimac_web_app
+    trigger: page
+    trigger_detail: "Browser loads the CODIMAC single-page application at /."
+    source_anchors:
+      - path: src/main.tsx
+        line: 1
+      - path: src/App.tsx
+        line: 2629
+      - path: src/lib/supabase.ts
+        line: 59
+    exported_signature: []
+    dynamic_entrypoints: []
+    depends_on: []
+    shared_refs: []

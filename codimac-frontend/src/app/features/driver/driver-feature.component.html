@@ -1,0 +1,77 @@
+<div class="phone-stage">
+  <div class="mobile-screen">
+    @if (state.active() === "Perfil") {
+      <div class="mobile-brand">CODIMAC <span>Chofer</span></div>
+      <div class="profile-hero"><div class="avatar">{{ state.userName().split(" ").map((part) => part[0]).join("") }}</div><h2>{{ state.userName() }}</h2><p>{{ state.role() }}</p></div>
+      @if (remoteRoute(); as route) {
+        <div class="profile-data"><span>Vehículo asignado<strong>{{ route.vehicles?.vehicle_type }} {{ route.vehicles?.plate }}</strong></span></div>
+      } @else {
+        <p class="mobile-empty">No tienes un vehículo asignado.</p>
+      }
+      <button class="button secondary mobile-main" type="button" (click)="logout()">Cerrar sesión</button>
+      <div class="mobile-nav"><button type="button" (click)="state.selectSection('Mi ruta')"><codimac-icon name="route" />Mi ruta</button><button class="active" type="button" (click)="state.selectSection('Perfil')"><codimac-icon name="user" />Perfil</button></div>
+    } @else {
+      <div class="mobile-brand">CODIMAC <span>Ruta del chofer</span></div>
+      @if (screen() === 0) {
+        <p class="mobile-eyebrow">RUTA ASIGNADA</p><h2>Buenos días, {{ state.userName() }}</h2>
+        @if (remoteRoute(); as route) {
+          <div class="mobile-route-card"><codimac-status [status]="route.status" /><strong>{{ route.code }}</strong><span>{{ route.route_stops.length }} paradas</span><div><codimac-icon name="truck" /><p>{{ route.vehicles?.vehicle_type }} {{ route.vehicles?.plate }}<small>Vehículo asignado</small></p></div></div>
+          <button class="button primary mobile-main" type="button" (click)="startRoute()">Iniciar reparto</button>
+        } @else {
+          <p class="mobile-empty">No tienes una ruta asignada por ahora.</p>
+        }
+      } @else if (screen() === 1) {
+        @if (remoteRoute(); as route) {
+          <div class="mobile-progress"><span>Ruta {{ route.code }}</span><strong>{{ currentRemoteStop?.sequence_number ?? route.route_stops.length }} / {{ route.route_stops.length }} entregas</strong></div>
+          @if (currentRemoteStop) {
+            <div class="driver-focus"><div><p class="mobile-eyebrow">SIGUIENTE PARADA {{ currentRemoteStop.sequence_number }}</p><h2>{{ currentClientName }}</h2><span><codimac-icon name="clock" [size]="14" /> Llegada estimada: {{ currentEta }}</span>@if (currentRemoteStop.attempts > 0) {<span>Intento {{ currentRemoteStop.attempts + 1 }} de 2</span>}</div><codimac-status [status]="currentRemoteStop.status" /></div>
+            <div class="driver-directions"><codimac-icon name="pin" [size]="22" /><div><strong>{{ currentClientAddress }}</strong><span>Dirección de entrega</span></div><button type="button" (click)="openMap()">Cómo llegar</button></div>
+            <button class="button primary mobile-main" type="button" (click)="screen.set(2)">Ver pedido de esta parada <codimac-icon name="arrow" [size]="17" /></button>
+          } @else {
+            <p class="mobile-empty">No hay paradas pendientes en esta ruta.</p>
+          }
+          <div class="driver-route-list">@for (stop of route.route_stops; track stop.id) {<div class="mobile-stop" [class.current]="stop.id === currentRemoteStop?.id"><span>{{ stop.sequence_number }}</span><div><strong>{{ stop.orders?.clients?.name ?? stop.orders?.code }}</strong><small>{{ stop.status }}</small></div></div>}</div>
+        } @else {
+          <p class="mobile-empty">No tienes una ruta asignada por ahora.</p>
+        }
+      } @else if (screen() === 2) {
+        <button class="back-link" type="button" (click)="screen.set(1)">← Volver a la ruta</button>
+        @if (currentRemoteStop; as stop) {
+          <div class="delivery-heading"><div><p class="mobile-eyebrow">PARADA {{ stop.sequence_number }} DE {{ remoteRoute()?.route_stops?.length }}</p><h2>{{ currentClientName }}</h2></div><codimac-status [status]="stop.status" /></div>
+          <div class="mobile-address"><codimac-icon name="pin" /><div><strong>{{ currentClientAddress }}</strong><span>Dirección de entrega</span></div></div>
+          <div class="mobile-contact"><button type="button" (click)="openMap()"><codimac-icon name="route" />Abrir mapa</button><button type="button" (click)="callClient()"><codimac-icon name="user" />Llamar</button></div>
+          <div class="delivery-guide"><p class="mobile-eyebrow">QUÉ HACER EN ESTA PARADA</p><div><span>1</span><p><strong>Verifica el pedido</strong><small>{{ remoteItemCount }} productos · {{ remoteUnitCount }} unidades</small></p></div><div><span>2</span><p><strong>Entrega y solicita el nombre</strong><small>Registra quién recibe el pedido</small></p></div><div><span>3</span><p><strong>Confirma o reporta un problema</strong><small>No cierres la parada sin registrar el resultado</small></p></div></div>
+          <div class="mobile-products"><p class="mobile-eyebrow">PRODUCTOS A ENTREGAR</p>
+            @for (item of stop.orders?.order_items ?? []; track $index) {
+              <div><span>{{ item.products.name }}<small>{{ item.products.unit }}</small></span><strong>{{ item.quantity }} {{ item.products.unit }}</strong></div>
+            } @empty {
+              <p>No hay productos asociados a esta parada.</p>
+            }
+          </div>
+          <button class="button primary mobile-main" type="button" (click)="screen.set(3)">Ya entregué el pedido</button><button class="button secondary mobile-main" type="button" (click)="screen.set(5)">No pude entregar</button>
+        } @else {
+          <p class="mobile-empty">No hay una parada activa.</p>
+        }
+      } @else if (screen() === 3) {
+        <p class="mobile-eyebrow">CONFIRMAR ENTREGA</p><h2>¿Quién recibió el pedido?</h2>
+        <label class="mobile-field">Nombre de quien recibió<input placeholder="Nombre completo" [(ngModel)]="receiver" /></label>
+        <label class="mobile-field">Observaciones<textarea placeholder="Opcional"></textarea></label>
+        <button class="button primary mobile-main" type="button" (click)="confirmDelivery()">Confirmar</button>
+      } @else if (screen() === 4) {
+        <div class="mobile-success"><div><codimac-icon name="check" [size]="31" /></div><h2>Entrega confirmada</h2><p>{{ receiver }} recibió el pedido.</p><button class="button primary mobile-main" type="button" (click)="screen.set(1); state.showToast('Consultando el estado de la ruta.')">Volver a la ruta</button></div>
+      } @else if (screen() === 6) {
+        @if (closedSummary(); as summary) {
+          <p class="mobile-eyebrow">REPARTO COMPLETADO</p><h2>{{ summary.code }}</h2>
+          <div class="profile-data"><span>Entregas completadas<strong>{{ summary.delivered }}</strong></span><span>No entregadas<strong>{{ summary.not_delivered }}</strong></span><span>Distancia prevista<strong>{{ summary.distance_km ?? "—" }} km</strong></span><span>Tiempo de ruta<strong>{{ summary.estimated_minutes ?? "—" }} min</strong></span></div>
+          <p>Inicio {{ summary.started_at | date:"shortTime":"America/Lima" }} · Cierre {{ summary.closed_at | date:"shortTime":"America/Lima" }}</p>
+        } @else {<p class="mobile-empty">No se pudo cargar el resumen del reparto.</p>}
+      } @else {
+        <button class="back-link" type="button" (click)="screen.set(2)">← Volver al detalle</button><p class="mobile-eyebrow">REGISTRAR INCIDENCIA</p><h2>¿Qué ocurrió?</h2>
+        <label class="mobile-field">Causa<select [(ngModel)]="incidentCause"><option>Cliente ausente</option><option>Dirección errónea</option><option>Otra</option></select></label>
+        <label class="mobile-field">Observaciones<textarea placeholder="Describe brevemente lo ocurrido" [(ngModel)]="incidentNotes"></textarea></label>
+        <button class="button primary mobile-main" type="button" (click)="saveIncident()">Guardar incidencia</button>
+      }
+      <div class="mobile-nav"><button class="active" type="button" (click)="screen.set(0); state.selectSection('Mi ruta')"><codimac-icon name="route" />Mi ruta</button><button type="button" (click)="state.selectSection('Perfil')"><codimac-icon name="user" />Perfil</button></div>
+    }
+  </div>
+</div>

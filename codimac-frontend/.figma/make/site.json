@@ -1,0 +1,12 @@
+{
+  "title": "CODIMAC · Gestión logística",
+  "description": "Sistema académico de pedidos, inventario, rutas y seguimiento de entregas para CODIMAC.",
+  "language": "es",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": true,
+    "ignoreReducedMotion": false
+  }
+}

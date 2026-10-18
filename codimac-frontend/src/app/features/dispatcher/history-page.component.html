@@ -1,0 +1,18 @@
+<div class="module-layout">
+  <section class="card module-card">
+    <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar reparto" placeholder="Buscar reparto, chofer o vehículo" [value]="search()" (input)="setSearch($event)" /></div><button class="button primary" type="button" [disabled]="!filteredRoutes.length" (click)="exportCsv()">Exportar</button></div>
+    <div class="table-wrap"><table><thead><tr><th>Reparto</th><th>Fecha</th><th>Chofer</th><th>Vehículo</th><th>Estado</th><th>Paradas</th></tr></thead>
+      <tbody>@for (route of filteredRoutes; track route.id) {<tr [class.selected-row]="selectedId() === route.id" (click)="selectedId.set(route.id)"><td><strong>{{ route.code }}</strong></td><td>{{ route.created_at | date:"short":"America/Lima" }}</td><td>{{ route.driver_name ?? "Sin asignar" }}</td><td>{{ route.vehicle_plate ?? "Sin asignar" }}</td><td><codimac-status [status]="route.status" /></td><td>{{ route.stop_count }}</td></tr>} @empty {<tr><td colspan="6">{{ loaded() ? "No hay repartos registrados." : "Cargando historial…" }}</td></tr>}</tbody>
+    </table></div>
+  </section>
+  <aside class="card detail-panel history-detail">
+    @if (selectedRoute; as route) {
+      <div class="card-header"><div><p class="section-kicker">DETALLE DEL REPARTO</p><h2>{{ route.code }}</h2></div><codimac-status [status]="route.status" /></div>
+      <dl class="detail-list"><div><dt>Fecha</dt><dd>{{ route.created_at | date:"short":"America/Lima" }}</dd></div><div><dt>Chofer</dt><dd>{{ route.driver_name ?? "Sin asignar" }}</dd></div><div><dt>Vehículo</dt><dd>{{ route.vehicle_plate ?? "Sin asignar" }}</dd></div><div><dt>Paradas</dt><dd>{{ route.stop_count }}</dd></div><div><dt>Distancia prevista</dt><dd>{{ route.distance_km ?? "—" }} km</dd></div><div><dt>Tiempo estimado</dt><dd>{{ route.estimated_minutes ?? "—" }} min</dd></div><div><dt>Combustible estimado</dt><dd>S/ {{ route.estimated_cost ?? "—" }}</dd></div></dl>
+      <div class="history-stops">@for (stop of route.route_stops; track stop.id) {<p>{{ stop.sequence_number }}. {{ stop.code }} · {{ stop.client_name }} · {{ stop.status }}@if (stop.received_by) { · Recibió: {{ stop.received_by }}}</p>}</div>
+    } @else {
+      <div class="card-header"><div><p class="section-kicker">DETALLE DEL REPARTO</p><h2>Sin repartos</h2></div></div>
+      <p>{{ loaded() ? "Cuando se registre un reparto, podrás consultar aquí sus datos." : "Cargando historial…" }}</p>
+    }
+  </aside>
+</div>

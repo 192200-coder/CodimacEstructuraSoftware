@@ -1,0 +1,64 @@
+unit: codimac_web_app
+side_effects:
+  - source_loc: "src/App.tsx:2650"
+    effect: "Persist success/action feedback in a toast and attempt to write an audit event."
+    must_preserve: true
+  - source_loc: "src/App.tsx:2710"
+    effect: "Persist selected role and section locally and best-effort remotely."
+    must_preserve: true
+  - source_loc: "src/App.tsx:2870"
+    effect: "Export route history as a downloadable CSV."
+    must_preserve: true
+  - source_loc: "src/App.tsx:1550"
+    effect: "Open the selected stop in an external map and allow calling the client."
+    must_preserve: true
+  - source_loc: "src/App.tsx:1780"
+    effect: "Confirm delivery with receiver and update the route from the server."
+    must_preserve: true
+  - source_loc: "src/App.tsx:1810"
+    effect: "Record a stop incident, update route attempts, and present retry/exhaustion feedback."
+    must_preserve: true
+branches:
+  - source_loc: "src/App.tsx:2675"
+    condition: "Supabase login/bootstrap succeeds or fails."
+    behavior: "Use the returned role and synchronized state when online; otherwise permit only the documented demo accounts with the demo password."
+    must_preserve: true
+  - source_loc: "src/App.tsx:396"
+    condition: "A selected order exists remotely and allows the requested state transition."
+    behavior: "Call prepare, ready, or cancel; refresh orders on success and surface errors without claiming success."
+    must_preserve: true
+  - source_loc: "src/App.tsx:1660"
+    condition: "The driver confirms delivery with a non-empty receiver name."
+    behavior: "Submit the delivery, refresh the route, and only then show success; empty names are rejected."
+    must_preserve: true
+  - source_loc: "src/App.tsx:1990"
+    condition: "The customer tracking code is COD-101 or a remote tracking lookup succeeds."
+    behavior: "Show only the requested order status, route position, ETA, and reprogramming state."
+    must_preserve: true
+  - source_loc: "src/App.tsx:2135"
+    condition: "Current role selects an allowed navigation entry."
+    behavior: "Show role-specific functions; driver, customer, and access experiences use their dedicated mobile or access layouts."
+    must_preserve: true
+error_paths:
+  - source_loc: "src/lib/supabase.ts:24"
+    trigger: "HTTP response is not successful."
+    outcome: "Throw the server-provided error or the CODIMAC connection error."
+    contract: "Callers receive a rejected Promise; no success-shaped response is returned."
+    must_preserve: true
+  - source_loc: "src/App.tsx:1650"
+    trigger: "Delivery confirmation has no receiver name or server request fails."
+    outcome: "Show validation/API feedback and do not transition to delivery-success state."
+    contract: "No stop is treated as delivered until the API succeeds."
+    must_preserve: true
+  - source_loc: "src/App.tsx:2005"
+    trigger: "Tracking lookup fails for an unknown code."
+    outcome: "Keep the lookup form active and show the order-not-found feedback."
+    contract: "Customer sees no information about another order."
+    must_preserve: true
+  - source_loc: "src/App.tsx:2350"
+    trigger: "Login request fails and credentials do not match an allowed demo account."
+    outcome: "Show the login error without changing the current role."
+    contract: "Access remains denied."
+    must_preserve: true
+concurrency:
+  model: async

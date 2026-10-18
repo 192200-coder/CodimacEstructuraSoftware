@@ -1,0 +1,11 @@
+# Historical frontend-only migration snapshot; the Supabase seam below no longer
+# describes the current Express/Neon integration.
+seams:
+  - id: "src/lib/supabase.ts:1"
+    description: "Angular frontend continues to communicate with the existing Supabase Auth and Edge API."
+    source: inferred
+    cut_between:
+      migrated_side: codimac_web_app
+      frozen_side: supabase_edge_api
+    protocol_shift: null
+    frozen_side_rule: "The Supabase Edge functions, authentication setup, migrations, and SQL transactions MUST NOT be refactored as part of the React-to-Angular frontend migration."

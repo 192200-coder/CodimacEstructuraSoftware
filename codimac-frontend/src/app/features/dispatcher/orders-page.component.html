@@ -1,0 +1,54 @@
+<div class="module-layout">
+  <section class="card module-card">
+    <div class="filterbar">
+      <div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar pedido" placeholder="Buscar por código o cliente" [value]="search()" (input)="setSearch($event)" /></div>
+      <select class="filter-button" aria-label="Filtrar por estado" [value]="statusFilter()" (change)="setStatusFilter($event)"><option>Todos los estados</option><option>Pendiente</option><option>En preparación</option><option>Listo</option><option>En ruta</option><option>Entregado</option><option>Cancelado</option></select>
+      <select class="filter-button" aria-label="Filtrar por prioridad" [value]="priorityFilter()" (change)="setPriorityFilter($event)"><option>Todas las prioridades</option><option>Alta</option><option>Media</option><option>Normal</option><option>Sin plazo</option></select>
+      <select class="filter-button" aria-label="Filtrar por fecha" [value]="dateFilter()" (change)="setDateFilter($event)"><option>Cualquier fecha</option><option>Hoy</option><option>Esta semana</option></select>
+      <button class="button primary" type="button" (click)="state.action('Formulario de nuevo pedido listo para completar')"><codimac-icon name="plus" [size]="17" /> Nuevo pedido</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Prioridad</th><th>Fecha límite</th><th></th></tr></thead>
+        <tbody>
+          @for (row of rows; track row.code) {
+            <tr [class.selected-row]="selectedCode() === row.code" (click)="selectedCode.set(row.code)">
+              <td><strong>{{ row.code }}</strong></td><td>{{ row.client }}</td><td><codimac-status [status]="row.status" /></td>
+              <td><span class="priority" [class.alta]="row.priority === 'Alta'">{{ row.priority }}</span></td><td>{{ row.deadline }}</td><td><codimac-icon name="chevron" [size]="15" /></td>
+            </tr>
+          } @empty {
+            <tr><td colspan="6">{{ remoteLoaded() ? "No hay pedidos que coincidan con la búsqueda." : "Cargando pedidos…" }}</td></tr>
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+  @if (urgentOrders.length) {
+    <p class="alert warning" role="status">Pedidos con fecha límite dentro de 24 horas: {{ urgentOrders.map((order) => order.code).join(", ") }}</p>
+  }
+  <aside class="card detail-panel">
+    @if (selectedRemote; as order) {
+      <div class="card-header"><div><p class="section-kicker">DETALLE DE PEDIDO</p><h2>{{ order.code }}</h2></div><codimac-status [status]="order.status" /></div>
+      <dl class="detail-list"><div><dt>Cliente</dt><dd>{{ order.clients?.name ?? "Cliente" }}</dd></div><div><dt>Entrega</dt><dd>{{ order.deadline_at ? (order.deadline_at | date:"short") : "Sin fecha límite" }}</dd></div><div><dt>Dirección</dt><dd>{{ order.clients?.address ?? "Sin dirección" }}</dd></div></dl>
+      <div class="tracking-token-detail">
+        <span>Código privado de seguimiento</span>
+        <code>{{ order.tracking_token }}</code>
+        <p>Compártelo con el cliente para consultar el estado. No uses el código visible del pedido.</p>
+        <button class="button secondary" type="button" (click)="copyTrackingToken(order.tracking_token)">Copiar código</button>
+      </div>
+      <p class="field-label">PRODUCTOS</p>
+      @for (item of order.order_items ?? []; track $index) {
+        <div class="product-line"><div><strong>{{ item.products.name }}</strong><span>{{ item.products.unit }}</span></div><b>{{ item.quantity }}</b></div>
+      }
+      <div class="panel-actions">
+        <button class="button secondary" type="button" [disabled]="!['Pendiente','En preparación','Listo'].includes(order.status)" (click)="updateSelected('cancel')">Cancelar</button>
+        <button class="button primary" type="button" [disabled]="!['Pendiente','En preparación'].includes(order.status)" (click)="updateSelected('prepare')">
+          {{ order.status === "Pendiente" ? "Pasar a preparación" : order.status === "En preparación" ? "Marcar Listo" : "Actualizar estado" }}
+        </button>
+      </div>
+    } @else {
+      <div class="card-header"><div><p class="section-kicker">DETALLE DE PEDIDO</p><h2>{{ state.isOnline() ? "Sin pedidos" : selectedCode() }}</h2></div></div>
+      <p>{{ remoteLoaded() ? "Los pedidos aparecerán aquí cuando se registren." : "Cargando pedidos…" }}</p>
+    }
+  </aside>
+</div>

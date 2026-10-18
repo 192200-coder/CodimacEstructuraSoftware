@@ -1,0 +1,27 @@
+unit: codimac_web_app
+commit: false
+candidate_splits:
+  - id: "src/App.tsx:373-1024"
+    drivers: [concern_split]
+    rationale: "Dispatcher orders, inventory, clients, and route planning are distinct user workflows and belong behind feature-level UI boundaries."
+    source_slice:
+      file: src/App.tsx
+      lines: [373, 1024]
+  - id: "src/App.tsx:1025-1480"
+    drivers: [concern_split]
+    rationale: "Route history and administrator catalog, settings, indicators, and audit screens have separate access and maintenance responsibilities."
+    source_slice:
+      file: src/App.tsx
+      lines: [1025, 1480]
+  - id: "src/App.tsx:1481-2010"
+    drivers: [execution_model_split, concern_split]
+    rationale: "The driver's mobile stop lifecycle and remote mutations differ from the desktop dispatcher and administrator workflows."
+    source_slice:
+      file: src/App.tsx
+      lines: [1481, 2010]
+  - id: "src/App.tsx:2011-2628"
+    drivers: [concern_split]
+    rationale: "Public customer tracking, access control, and form dialogs are independent UI concerns shared across role workflows."
+    source_slice:
+      file: src/App.tsx
+      lines: [2011, 2628]

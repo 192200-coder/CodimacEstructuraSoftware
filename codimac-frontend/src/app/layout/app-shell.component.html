@@ -1,0 +1,159 @@
+<div class="app-shell">
+  <div
+    class="sidebar-overlay"
+    [class.is-open]="state.menuOpen()"
+    (click)="state.menuOpen.set(false)"
+  ></div>
+  <aside class="sidebar" [class.is-open]="state.menuOpen()">
+    <div class="brand">
+      <div class="brand-mark"><span>C</span></div>
+      <div><strong>CODIMAC</strong><small>Logística</small></div>
+      <button
+        class="icon-button sidebar-close"
+        type="button"
+        aria-label="Cerrar menú"
+        (click)="state.menuOpen.set(false)"
+      >
+        <codimac-icon name="close" />
+      </button>
+    </div>
+    <nav class="nav" aria-label="Navegación principal">
+      <p class="nav-label">
+        {{ state.role() === "Administrador" ? "ADMINISTRACIÓN" : "OPERACIÓN" }}
+      </p>
+      @for (item of navItems; track item.label) {
+        <button
+          class="nav-item"
+          type="button"
+          [class.active]="state.active() === item.label"
+          (click)="state.selectSection(item.label)"
+        >
+          <codimac-icon [name]="item.icon" [size]="19" />
+          <span>{{ item.label }}</span>
+        </button>
+      }
+    </nav>
+    <div class="sidebar-footer">
+      <div class="avatar">{{ userInitials }}</div>
+      <div class="profile-copy">
+        <strong>{{ state.userName() }}</strong>
+        <small>{{ state.role() }}</small>
+      </div>
+      <button
+        class="logout-button"
+        type="button"
+        aria-label="Cerrar sesión"
+        title="Cerrar sesión"
+        (click)="logout()"
+      >
+        <codimac-icon name="close" [size]="17" />
+      </button>
+    </div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <button
+        class="icon-button menu-button"
+        type="button"
+        aria-label="Abrir menú"
+        (click)="state.menuOpen.set(true)"
+      >
+        <codimac-icon name="menu" />
+      </button>
+      <label class="searchbox">
+        <codimac-icon name="search" [size]="18" />
+        <input
+          aria-label="Buscar"
+          placeholder="Buscar pedido, cliente o reparto..."
+          (keydown.enter)="state.action('Búsqueda realizada')"
+        />
+        <kbd>⌘ K</kbd>
+      </label>
+      <div class="topbar-actions">
+        <div class="notification-area">
+          <button
+            class="icon-button notification-button"
+            type="button"
+            aria-label="Notificaciones"
+            [attr.aria-expanded]="notificationsOpen()"
+            (click)="toggleNotifications()"
+          >
+            <codimac-icon name="bell" [size]="18" />
+            @if (unreadCount > 0) { <span>{{ unreadCount > 9 ? "9+" : unreadCount }}</span> }
+          </button>
+          @if (notificationsOpen()) {
+            <section class="notification-panel" role="region" aria-label="Notificaciones operativas">
+              <header>
+                <div><strong>Notificaciones</strong><small>Actividad de la operación</small></div>
+                <div class="notification-panel-actions">
+                  @if (unreadCount > 0) {
+                    <button type="button" (click)="markNotificationsRead()">Marcar todas leídas</button>
+                  }
+                  <button class="icon-button" type="button" aria-label="Cerrar notificaciones" (click)="closeNotifications()">
+                    <codimac-icon name="close" [size]="16" />
+                  </button>
+                </div>
+              </header>
+              @if (notificationError()) {
+                <p class="notification-error" role="alert">{{ notificationError() }}</p>
+              } @else if (notifications().length) {
+                <div class="notification-list">
+                  @for (notification of notifications(); track notification.id) {
+                    <button
+                      class="notification-item"
+                      type="button"
+                      [class.unread]="!readNotificationIds().has(notification.id)"
+                      (click)="markNotificationRead(notification)"
+                    >
+                      <span class="notification-indicator" [class.urgent]="notification.new_status === 'Incidencia' || notification.new_status === 'No entregada'"></span>
+                      <span class="notification-copy">
+                        <strong>{{ getNotificationTitle(notification) }}</strong>
+                        <span>{{ getNotificationDetail(notification) }}</span>
+                        <time [attr.datetime]="notification.created_at">{{ formatNotificationDate(notification.created_at) }}</time>
+                      </span>
+                    </button>
+                  }
+                </div>
+              } @else {
+                <p class="notification-empty">No hay actividad reciente para mostrar.</p>
+              }
+              <small class="notification-footnote">Se actualiza cada 30 segundos. El estado leído se guarda en este dispositivo.</small>
+            </section>
+          }
+        </div>
+        <div class="date-chip">
+          <span class="live-dot" [class.offline]="!state.isOnline()"></span>
+          {{ state.isOnline() ? "Conectado" : "Sin conexión" }}
+        </div>
+      </div>
+    </header>
+    <div class="content">
+      <section class="page-heading">
+        <div>
+          <p class="eyebrow">CODIMAC · ABANCAY</p>
+          <h1>{{ pageTitle }}</h1>
+          <p>{{ pageSubtitle }}</p>
+        </div>
+        @if (state.role() === "Despachador" && state.active() === "Panel") {
+          <div class="heading-actions">
+            <button
+              class="button secondary"
+              type="button"
+              (click)="state.action('Selecciona los pedidos listos para armar el reparto')"
+            >
+              <codimac-icon name="route" [size]="18" /> Armar reparto
+            </button>
+            <button
+              class="button primary"
+              type="button"
+              (click)="state.action('Formulario de nuevo pedido listo para completar')"
+            >
+              <codimac-icon name="plus" [size]="18" /> Nuevo pedido
+            </button>
+          </div>
+        }
+      </section>
+      <ng-content />
+    </div>
+  </main>
+</div>

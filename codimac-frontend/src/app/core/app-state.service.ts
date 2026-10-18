@@ -1,0 +1,168 @@
+import { Injectable, signal } from "@angular/core"
+import {
+  checkBackendHealth,
+  codimacAuth,
+  logAuditEvent,
+  savePreferences,
+} from "../../lib/codimac-api"
+import { roleNavigation } from "./models"
+import type { DialogKind, Role } from "./models"
+
+@Injectable({ providedIn: "root" })
+export class AppStateService {
+  readonly role = signal<Role>(this.readRole())
+  readonly active = signal(roleNavigation[this.role()][0].label)
+  readonly userName = signal("")
+  readonly userId = signal("")
+  readonly menuOpen = signal(false)
+  readonly isOnline = signal(false)
+  readonly toast = signal("")
+  readonly dialog = signal<DialogKind | null>(null)
+  readonly inventoryRefresh = signal(0)
+  readonly catalogRefresh = signal(0)
+
+  private toastTimer: number | undefined
+
+  constructor() {
+    void this.restoreSession()
+    const { data } = codimacAuth.onAuthStateChange((_event, session) => {
+      this.isOnline.set(Boolean(session))
+    })
+    window.addEventListener("beforeunload", () =>
+      data.subscription.unsubscribe(),
+      { once: true },
+    )
+  }
+
+  changeRole(role: Role): void {
+    this.role.set(role)
+    this.active.set(roleNavigation[role][0].label)
+    this.menuOpen.set(false)
+    this.persistPreferences()
+  }
+
+  selectSection(section: string): void {
+    if (!roleNavigation[this.role()].some((item) => item.label === section)) {
+      this.showToast("No tienes acceso a esta sección.")
+      return
+    }
+    this.active.set(section)
+    this.menuOpen.set(false)
+    this.persistPreferences()
+  }
+
+  showToast(message: string, duration = 2600): void {
+    this.toast.set(message)
+    if (this.toastTimer !== undefined) window.clearTimeout(this.toastTimer)
+    this.toastTimer = window.setTimeout(() => this.toast.set(""), duration)
+    if (localStorage.getItem("codimac-access-token")) {
+      void logAuditEvent(message).catch((error: unknown) => {
+        console.error("No se pudo guardar el evento de auditoría.", error)
+      })
+    }
+  }
+
+  action(message: string): void {
+    const normalized = message.toLowerCase()
+    const dialog = this.dialogFor(normalized)
+    if (dialog) {
+      this.dialog.set(dialog)
+      return
+    }
+    if (normalized.includes("selecciona pedidos para calcular una ruta")) {
+      this.selectSection("Repartos")
+      this.showToast("Selecciona los pedidos Listo para calcular la ruta.")
+      return
+    }
+    this.showToast(message)
+  }
+
+  async authenticate(email: string, password: string): Promise<Role> {
+    await checkBackendHealth()
+    const { data, error } = await codimacAuth.signInWithPassword({ email, password })
+    if (error || !data.user) throw error ?? new Error("No se pudo iniciar sesión.")
+    const metadataRole = data.user.user_metadata["role"]
+    if (!this.isRole(metadataRole)) throw new Error("El servidor devolvió un rol inválido.")
+    this.userName.set(data.user.user_metadata.name)
+    this.userId.set(data.user.id)
+    this.isOnline.set(true)
+    this.changeRole(metadataRole)
+    return metadataRole
+  }
+
+  async logout(): Promise<void> {
+    const { error } = await codimacAuth.signOut()
+    this.isOnline.set(false)
+    this.changeRole("Acceso")
+    this.userName.set("")
+    this.userId.set("")
+    this.showToast("Sesión cerrada correctamente.")
+    if (error) throw error
+  }
+
+  private async restoreSession(): Promise<void> {
+    try {
+      const { data } = await codimacAuth.getSession()
+      if (!data.session) {
+        this.isOnline.set(false)
+        return
+      }
+      const { data: userData } = await codimacAuth.getUser()
+      this.isOnline.set(true)
+      this.userName.set(userData.user.display_name)
+      this.userId.set(userData.user.id)
+      if (this.isRole(userData.user.role)) this.changeRole(userData.user.role)
+    } catch (error) {
+      this.isOnline.set(false)
+      await codimacAuth.signOut()
+      console.warn("No se pudo restaurar la sesión de CODIMAC.", error)
+    }
+  }
+
+  private persistPreferences(): void {
+    const role = this.role()
+    const active = this.active()
+    localStorage.setItem("codimac-role", role)
+    localStorage.setItem("codimac-section", active)
+    if (!localStorage.getItem("codimac-access-token") || !this.isServerRole(role)) return
+    const storedUser = localStorage.getItem("codimac-auth-user")
+    try {
+      if (!storedUser || JSON.parse(storedUser).role !== role) return
+    } catch {
+      return
+    }
+    void savePreferences({ role, active }).catch((error: unknown) => {
+      console.warn("No se pudieron sincronizar las preferencias.", error)
+    })
+  }
+
+  private readRole(): Role {
+    return "Acceso"
+  }
+
+  private isRole(value: unknown): value is Role {
+    return (
+      typeof value === "string" &&
+      Object.prototype.hasOwnProperty.call(roleNavigation, value)
+    )
+  }
+
+  private isServerRole(value: Role): value is Exclude<Role, "Cliente" | "Acceso"> {
+    return value === "Despachador" || value === "Chofer" || value === "Administrador"
+  }
+
+  private dialogFor(message: string): DialogKind | null {
+    if (message.includes("nuevo pedido")) return "order"
+    if (message.includes("entrada de inventario")) return "inventory-entry"
+    if (message.includes("ajuste de existencias")) return "inventory-adjust"
+    if (message.includes("cliente nuevo")) return "client"
+    if (message.includes("formulario de usuarios")) return "user"
+    if (message.includes("formulario de productos")) return "product"
+    if (message.includes("formulario de vehículos")) return "vehicle"
+    if (message.includes("disponibilidad") || message.includes("todos los recursos")) {
+      return "resources"
+    }
+    if (message.includes("alertas operativas")) return "notifications"
+    return null
+  }
+}

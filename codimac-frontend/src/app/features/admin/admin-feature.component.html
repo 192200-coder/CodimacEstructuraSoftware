@@ -1,0 +1,57 @@
+@if (state.active() === "Datos de ejemplo") {
+  <section class="card module-card">
+    <p class="section-kicker">ENTORNO DE DEMOSTRACIÓN</p>
+    <h2>Cargar datos de ejemplo</h2>
+    <p>Agrega clientes, productos, vehículos y pedidos de demostración que aún no existan. La operación es idempotente y no elimina ni reemplaza registros.</p>
+    <button class="button primary" type="button" [disabled]="loadingDemoData()" (click)="loadDemoData()">{{ loadingDemoData() ? "Cargando…" : "Cargar datos faltantes" }}</button>
+  </section>
+} @else if (state.active() === "Indicadores") {
+  <section class="metric-grid admin-metrics">
+    @for (metric of metricRows; track metric[0]; let i = $index) {
+      <article class="metric-card" [class.green]="i === 0" [class.amber]="i === 1" [class.blue]="i > 1">
+        <span class="metric-trend">{{ metric[2] }}</span><strong class="metric-value">{{ metric[1] }}</strong><h2>{{ metric[0] }}</h2>
+      </article>
+    }
+  </section>
+} @else if (state.active() === "Parámetros") {
+  <section class="settings-grid">
+    <div class="card"><p class="section-kicker">UBICACIÓN</p><h2>Almacén principal</h2><div class="mini-map large"><div class="map-road one"></div><div class="map-road two"></div><span><codimac-icon name="pin" [size]="24" /></span></div><label class="setting-field">Latitud<input type="number" step="0.000001" [(ngModel)]="warehouseLatitude" /></label><label class="setting-field">Longitud<input type="number" step="0.000001" [(ngModel)]="warehouseLongitude" /></label></div>
+    <div class="card"><p class="section-kicker">COSTOS Y TIEMPOS</p><h2>Parámetros de ruta</h2>@if (!parametersConfigured) {<p>Aún no hay parámetros guardados en el backend.</p>}<label class="setting-field">Combustible por litro<input type="number" min="0.01" step="0.01" [(ngModel)]="fuelPrice" /></label><label class="setting-field">Minutos por parada<input type="number" min="0" step="1" [(ngModel)]="minutesPerStop" /></label><button class="button primary" type="button" (click)="saveParameters()">Guardar cambios</button></div>
+  </section>
+} @else if (state.active() === "Historial" || state.active() === "Auditoría") {
+  <section class="card module-card">
+    <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar" [placeholder]="'Buscar en ' + state.active().toLowerCase()" /></div><button class="button primary" type="button" (click)="openCreateDialog()">{{ state.active() === "Auditoría" ? "Exportar" : "Filtrar" }}</button></div>
+    <div class="table-wrap"><table><thead><tr>@for (header of tableData['Auditoría'].headers; track header) {<th>{{ header }}</th>}</tr></thead><tbody>@for (row of tableData['Auditoría'].rows; track row[0]) {<tr>@for (cell of row; track $index) {<td>{{ cell }}</td>}</tr>} @empty {<tr><td colspan="4">No hay movimientos registrados.</td></tr>}</tbody></table></div>
+  </section>
+} @else {
+  <section class="card module-card">
+    <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar" [placeholder]="'Buscar en ' + state.active().toLowerCase()" /></div><button class="button primary" type="button" (click)="openCreateDialog()">Nuevo {{ state.active().slice(0, -1).toLowerCase() }}</button></div>
+    @if (selectedData) {
+      <div class="table-wrap"><table><thead><tr>@for (header of selectedData.headers; track header) {<th>{{ header }}</th>}<th>Acciones</th></tr></thead><tbody>@for (row of selectedData.rows; track row[0]; let i = $index) {<tr>@for (cell of row; track $index) {<td>@if (cell === "Activo" || cell === "Disponible") {<codimac-status [status]="cell" />} @else { {{ cell }} }</td>}<td>@if (["Usuarios","Productos","Vehículos"].includes(state.active())) {<button class="button secondary" type="button" (click)="startEdit(i)">Editar</button>}</td></tr>} @empty {<tr><td [attr.colspan]="selectedData.headers.length + 1">No hay registros para mostrar.</td></tr>}</tbody></table></div>
+      @if (editingId()) {
+        <form class="form-grid" (ngSubmit)="saveEdit()">
+          @if (state.active() === "Usuarios") {
+            <label>Nombre<input name="editName" [(ngModel)]="editName" required /></label>
+            <label>Rol<select name="editRole" [(ngModel)]="editRole"><option>Despachador</option><option>Chofer</option><option>Administrador</option></select></label>
+            <label>Estado<select name="editActive" [(ngModel)]="editActive"><option [ngValue]="true">Activo</option><option [ngValue]="false">Inactivo</option></select></label>
+            <label>Nueva contraseña (opcional)<input name="editPassword" type="password" minlength="10" [(ngModel)]="editPassword" /></label>
+          } @else if (state.active() === "Productos") {
+            <label>Nombre<input name="editName" [(ngModel)]="editName" required /></label>
+            <label>Unidad<input name="editUnit" [(ngModel)]="editUnit" required /></label>
+            <label>Peso (kg)<input name="editWeightKg" type="number" min="0" step="0.001" [(ngModel)]="editWeightKg" required /></label>
+            <p>El stock se modifica desde Inventario para conservar su historial de movimientos.</p>
+          } @else {
+            <label>Placa<input name="editPlate" [(ngModel)]="editPlate" required /></label>
+            <label>Tipo<input name="editVehicleType" [(ngModel)]="editVehicleType" required /></label>
+            <label>Capacidad (kg)<input name="editCapacityKg" type="number" min="0.001" [(ngModel)]="editCapacityKg" required /></label>
+            <label>Velocidad (km/h)<input name="editSpeedKmh" type="number" min="0.001" [(ngModel)]="editSpeedKmh" required /></label>
+            <label>Rendimiento (km/L)<input name="editFuelEfficiency" type="number" min="0.001" [(ngModel)]="editFuelEfficiency" required /></label>
+            <label>Disponibilidad<select name="editAvailable" [(ngModel)]="editAvailable"><option [ngValue]="true">Disponible</option><option [ngValue]="false">No disponible</option></select></label>
+          }
+          <button class="button primary" type="submit">Guardar cambios</button>
+          <button class="button secondary" type="button" (click)="cancelEdit()">Cancelar</button>
+        </form>
+      }
+    }
+  </section>
+}

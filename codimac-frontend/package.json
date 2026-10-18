@@ -1,0 +1,39 @@
+{
+  "name": "codimac",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "packageManager": "pnpm@10.34.3",
+  "scripts": {
+    "dev": "ng serve --host 0.0.0.0 --port 8443",
+    "build": "ng build",
+    "preview": "ng serve --configuration production --host 0.0.0.0 --port 8443",
+    "format": "oxfmt",
+    "typecheck": "ng build --configuration development",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@angular/common": "22.2.3",
+    "@angular/compiler": "22.2.3",
+    "@angular/core": "22.2.3",
+    "@angular/forms": "22.2.3",
+    "@angular/platform-browser": "22.2.3",
+    "rxjs": "^7.8.2",
+    "tslib": "^2.8.1",
+    "zone.js": "^0.16.3"
+  },
+  "devDependencies": {
+    "@angular/build": "22.2.3",
+    "@angular/cli": "22.2.3",
+    "@angular/compiler-cli": "22.2.3",
+    "@types/node": "^22.0.0",
+    "oxfmt": "^0.2.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "pnpm": {
+    "overrides": {
+      "@jridgewell/sourcemap-codec": "1.6.0"
+    }
+  }
+}

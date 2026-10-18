@@ -1,0 +1,72 @@
+@if (loadError()) {
+  <div class="alert error" role="alert">{{ loadError() }}</div>
+} @else if (loading()) {
+  <section class="card"><p>Cargando el resumen de la operación…</p></section>
+} @else {
+  <section class="metric-grid" aria-label="Resumen de pedidos">
+    @for (metric of metrics; track metric.label) {
+      <article class="metric-card" [class]="metric.tone">
+        <div class="metric-top">
+          <div class="metric-icon"><codimac-icon [name]="metric.icon" [size]="19" /></div>
+          <span class="metric-trend">Actual</span>
+        </div>
+        <strong class="metric-value">{{ metric.value }}</strong>
+        <h2>{{ metric.label }}</h2>
+        <p>{{ metric.detail }}</p>
+      </article>
+    }
+  </section>
+  <div class="dashboard-grid">
+    <section class="card delivery-card">
+      <div class="card-header">
+        <div><p class="section-kicker">OPERACIÓN</p><h2>Pedidos recientes</h2></div>
+        <codimac-status [status]="orders().length + (orders().length === 1 ? ' pedido' : ' pedidos')" />
+      </div>
+      @if (recentOrders.length) {
+        <div class="table-wrap dashboard-orders">
+          <table>
+            <thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Fecha</th><th>Seguimiento privado</th></tr></thead>
+            <tbody>
+              @for (order of recentOrders; track order.id) {
+                <tr>
+                  <td><strong>{{ order.code }}</strong></td>
+                  <td>{{ order.clients?.name ?? "Cliente" }}</td>
+                  <td><codimac-status [status]="order.status" /></td>
+                  <td>{{ formatDate(order.ordered_at) }}</td>
+                  <td class="tracking-token-cell">
+                    <code>{{ order.tracking_token }}</code>
+                    <button class="tracking-copy-button" type="button" [attr.aria-label]="'Copiar código privado de seguimiento de ' + order.code" (click)="copyTrackingToken(order.tracking_token); $event.stopPropagation()">Copiar</button>
+                  </td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      } @else {
+        <p class="dashboard-empty">Aún no hay pedidos registrados.</p>
+      }
+      <button class="card-link" type="button" (click)="state.selectSection('Pedidos')">
+        Ver todos los pedidos <codimac-icon name="arrow" [size]="17" />
+      </button>
+    </section>
+    <div class="right-column">
+      <section class="card availability-card">
+        <div class="card-header">
+          <div><p class="section-kicker">RECURSOS</p><h2>Disponibilidad actual</h2></div>
+        </div>
+        <div class="availability-list">
+          <div><span class="resource-icon"><codimac-icon name="user" /></span><div><strong>Choferes disponibles</strong><small>Para asignar un reparto</small></div><strong class="available-value">{{ resources().drivers.length }}</strong></div>
+          <div><span class="resource-icon"><codimac-icon name="truck" /></span><div><strong>Vehículos</strong><small>Disponibles</small></div><strong class="available-value">{{ resources().vehicles.length }}</strong></div>
+        </div>
+        <button class="subtle-button" type="button" (click)="state.action('Mostrando todos los recursos disponibles')">Ver disponibilidad</button>
+      </section>
+      <section class="card quick-card">
+        <p class="section-kicker">ACCESOS RÁPIDOS</p>
+        <div class="quick-actions">
+          <button type="button" (click)="state.action('Formulario de nuevo pedido listo para completar')"><span><codimac-icon name="plus" /></span><div><strong>Nuevo pedido</strong><small>Registrar una venta</small></div><codimac-icon name="arrow" [size]="17" /></button>
+          <button type="button" (click)="state.action('Selecciona los pedidos listos para armar el reparto')"><span><codimac-icon name="route" /></span><div><strong>Armar reparto</strong><small>Crear una nueva ruta</small></div><codimac-icon name="arrow" [size]="17" /></button>
+        </div>
+      </section>
+    </div>
+  </div>
+}

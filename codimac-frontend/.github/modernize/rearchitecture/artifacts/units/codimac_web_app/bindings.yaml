@@ -1,0 +1,21 @@
+unit: codimac_web_app
+bindings:
+  - type: convention
+    name: "ReactDOM.createRoot"
+    source_loc: "src/main.tsx:6"
+    target: "src/App.tsx"
+    must_appear_in_target: true
+    notes: "Browser entrypoint mounts the UI into the #root element."
+  - type: convention
+    name: "React component state/effect lifecycle"
+    source_loc: "src/App.tsx:2629"
+    target: "Application role, navigation, auth-session, dialog, and toast state"
+    must_appear_in_target: true
+    notes: "State persists selected role/section in localStorage and subscribes to Supabase Auth changes."
+  - type: convention
+    name: "Supabase client configuration"
+    source_loc: "src/lib/supabase.ts:4"
+    target: "Existing Supabase project ID and public anonymous key"
+    must_appear_in_target: true
+    notes: "Supabase Auth and Edge Function URLs are initialized from utils/supabase/info.tsx."
+runtime_config: []

@@ -1,0 +1,116 @@
+# Historical React-to-Angular migration snapshot. Current Express/JWT API routes
+# and response contracts are documented in ../../../../../codimac-backend/README.md.
+# The following Supabase contract rows are not current implementation guidance.
+contracts:
+  - name: Supabase authentication
+    unit: codimac_web_app
+    type: sdk
+    stability: must_preserve
+    source_loc: "src/App.tsx:2688"
+    contract:
+      method: "Supabase auth.signInWithPassword / auth.signOut"
+      path: "Configured Supabase project"
+      request: "Email and password"
+      response: "Authenticated user and user_metadata.role"
+      error: "Authentication failure is surfaced to the login form; demo credentials remain available offline."
+      auth: "Supabase Auth session"
+    target_contract:
+      method: "Angular authentication service using the existing Supabase client"
+      notes: "Preserve session observation, role mapping, sign-out, and offline demo fallback."
+    semantic_divergence: []
+  - name: Load demo state
+    unit: codimac_web_app
+    type: rest
+    stability: must_preserve
+    source_loc: "src/lib/supabase.ts:59"
+    contract:
+      method: "POST"
+      path: "/bootstrap"
+      request: "{}"
+      response: "JSON demo/bootstrap state"
+      error: "HTTP failure throws the API error message or the CODIMAC connection error."
+      auth: "Supabase bearer session when present; public anon key otherwise."
+    target_contract:
+      method: "POST /make-server-e89cb289/bootstrap"
+      notes: "Angular startup may request bootstrap without blocking the local demo when the Edge Function is unavailable."
+    semantic_divergence: []
+  - name: Persist role and active section preferences
+    unit: codimac_web_app
+    type: rest
+    stability: must_preserve
+    source_loc: "src/lib/supabase.ts:67"
+    contract:
+      method: "PUT"
+      path: "/preferences"
+      request: "{ role: string, active: string }"
+      response: "JSON confirmation"
+      error: "Preference synchronization failure does not prevent local navigation."
+      auth: "Supabase bearer session when present; public anon key otherwise."
+    target_contract:
+      method: "PUT /make-server-e89cb289/preferences"
+      notes: "Retain localStorage preference persistence and best-effort remote synchronization."
+    semantic_divergence: []
+  - name: Record audit event
+    unit: codimac_web_app
+    type: rest
+    stability: must_preserve
+    source_loc: "src/lib/supabase.ts:77"
+    contract:
+      method: "POST"
+      path: "/events"
+      request: "{ message: string }"
+      response: "JSON confirmation"
+      error: "Audit logging is currently best-effort from the UI."
+      auth: "Supabase bearer session when present; public anon key otherwise."
+    target_contract:
+      method: "POST /make-server-e89cb289/events"
+      notes: "Preserve the existing audit-event request shape."
+    semantic_divergence: []
+  - name: Order operations
+    unit: codimac_web_app
+    type: rest
+    stability: must_preserve
+    source_loc: "src/lib/supabase.ts:84"
+    contract:
+      method: "GET /orders; POST /orders/{id}/prepare; POST /orders/{id}/ready; POST /orders/{id}/cancel"
+      path: "/orders"
+      request: "Order IDs for state-transition operations"
+      response: "RemoteOrder[] with code, status, deadline_at, and optional client"
+      error: "API failures throw and are presented as action feedback."
+      auth: "Supabase session and backend role authorization."
+    target_contract:
+      method: "Angular order data service calling the existing /orders endpoints"
+      notes: "Keep response fields, transition endpoints, and backend validation unchanged."
+    semantic_divergence: []
+  - name: Driver route and stop operations
+    unit: codimac_web_app
+    type: rest
+    stability: must_preserve
+    source_loc: "src/lib/supabase.ts:101"
+    contract:
+      method: "GET /driver/route; POST /routes/{id}/start; POST /stops/{id}/deliver; POST /stops/{id}/incidents"
+      path: "/driver/route and /routes/{id}/start and /stops/{id}"
+      request: "Route/stop IDs; receivedBy for delivery; cause and notes for incident"
+      response: "RemoteRoute with ordered route_stops, statuses, attempts, and order/client summaries"
+      error: "Failed start, delivery, or incident actions report the API error and do not advance the UI state."
+      auth: "Authenticated Chofer role; backend validates ownership."
+    target_contract:
+      method: "Angular driver data service calling the existing route and stop endpoints"
+      notes: "Preserve ownership checks, stop status, receiver name, cause, notes, and attempt behavior."
+    semantic_divergence: []
+  - name: Public delivery tracking
+    unit: codimac_web_app
+    type: rest
+    stability: must_preserve
+    source_loc: "src/lib/supabase.ts:153"
+    contract:
+      method: "GET"
+      path: "/tracking/{token}"
+      request: "URL-encoded tracking token"
+      response: "Tracking information limited to the requested order"
+      error: "Unknown order produces the customer-facing not-found message."
+      auth: "Public tracking token; backend applies rate limiting."
+    target_contract:
+      method: "GET /make-server-e89cb289/tracking/{token}"
+      notes: "Do not expose other customers or deliveries in the Angular customer portal."
+    semantic_divergence: []
