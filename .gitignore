@@ -1,0 +1,15 @@
+**/node_modules/
+**/dist/
+**/build/
+**/coverage/
+**/.angular/
+**/.cache/
+**/.vite/
+**/.tsupgrader/
+**/.env
+**/.env.*
+!**/.env.example
+*.tsbuildinfo
+*.log
+Thumbs.db
+.DS_Store
