@@ -277,6 +277,10 @@ td strong { color: #334256; font-weight: 600; }
 .inventory-summary span { color: #8b96a3; font-size: 9px; }
 .inventory-summary strong { margin-top: 6px; color: #304056; font-size: 16px; }
 .warning-text { color: #b56f19 !important; }
+.location-map { width: 100%; min-height: 260px; grid-column: 1 / -1; overflow: hidden; border: 1px solid #dce4eb; border-radius: 8px; background: #eef2f4; }
+.map-address-field { grid-column: 1 / -1; }
+.map-provider-note { grid-column: 1 / -1; margin: -5px 0 0; color: #718092; font-size: 10px; }
+.codimac-map-marker { display: grid; place-items: center; color: #c53e35; font-size: 24px; text-shadow: 0 1px 3px #fff; }
 .adjust-button { margin: 15px 17px; }
 .clients-layout { grid-template-columns: minmax(270px,.65fr) minmax(0,1.2fr); }
 .client-list { padding: 0; overflow: hidden; }

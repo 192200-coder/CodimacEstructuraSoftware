@@ -4,7 +4,9 @@ import { AppStateService } from "../core/app-state.service"
 import { CodimacApiService } from "../core/codimac-api.service"
 import type { DialogKind } from "../core/models"
 import { IconComponent } from "../shared/icon.component"
+import { MapLocationPickerComponent } from "../shared/map-location-picker.component"
 import { ApiRequestError, type InventoryAdjustmentReason } from "../../lib/codimac-api"
+import { advertenciaAreaServicio, validarDatosCliente } from "../../dominio/clientes"
 
 const titles: Record<DialogKind, string> = {
   order: "Nuevo pedido",
@@ -29,7 +31,7 @@ interface CatalogOption {
 @Component({
   selector: "codimac-form-dialog",
   standalone: true,
-  imports: [FormsModule, IconComponent],
+  imports: [FormsModule, IconComponent, MapLocationPickerComponent],
   templateUrl: "./form-dialog.component.html",
 })
 export class FormDialogComponent implements OnInit {
@@ -39,12 +41,17 @@ export class FormDialogComponent implements OnInit {
   readonly inventoryProducts = signal<CatalogOption[]>([])
   readonly orderFieldErrors = signal<Record<string, string>>({})
   readonly inventoryFieldErrors = signal<Record<string, string>>({})
+  readonly clientErrors = signal<string[]>([])
 
   name = ""
   contact = ""
   address = ""
+  reference = ""
   latitude: number | null = null
   longitude: number | null = null
+  warehouseLatitude = -13.6366
+  warehouseLongitude = -72.8814
+  serviceRadiusKm = 50
   clientId = ""
   productId = ""
   quantity = 1
@@ -78,6 +85,18 @@ export class FormDialogComponent implements OnInit {
         const clients = await this.api.getCatalog<CatalogOption[]>("clients")
         this.clients.set(clients)
         this.clientId = clients[0]?.id ?? ""
+      }
+      if (this.kind === "client") {
+        const parameters = await this.api.getCatalog<{
+          warehouse_latitude: number | string
+          warehouse_longitude: number | string
+          service_radius_km?: number | string
+        } | null>("parameters")
+        if (parameters) {
+          this.warehouseLatitude = Number(parameters.warehouse_latitude)
+          this.warehouseLongitude = Number(parameters.warehouse_longitude)
+          this.serviceRadiusKm = Number(parameters.service_radius_km ?? 50)
+        }
       }
       if (this.kind === "order" || this.kind === "product") {
         const products = await this.api.getCatalog<CatalogOption[]>("products")
@@ -195,6 +214,20 @@ export class FormDialogComponent implements OnInit {
     event.preventDefault()
     const kind = this.kind
     this.clearOrderErrors()
+    this.clientErrors.set([])
+    if (kind === "client") {
+      const errors = validarDatosCliente({
+        contact: this.contact.trim(),
+        address: this.address,
+        reference: this.reference,
+        latitude: this.latitude,
+        longitude: this.longitude,
+      })
+      if (errors.length) {
+        this.clientErrors.set(errors)
+        return
+      }
+    }
     if (kind === "inventory-entry" || kind === "inventory-adjust") {
       if (!this.validateInventory(kind)) return
     }
@@ -227,12 +260,16 @@ export class FormDialogComponent implements OnInit {
           break
           }
         case "client":
+          if (this.latitude === null || this.longitude === null) {
+            throw new Error("Selecciona la ubicación del cliente en el mapa.")
+          }
           await this.api.createCatalogRecord("clients", {
             name: this.name,
-            contact: this.contact || null,
-            address: this.address,
-            latitude: Number(this.latitude),
-            longitude: Number(this.longitude),
+            contact: this.contact.trim(),
+            address: this.address.trim(),
+            reference: this.reference.trim(),
+            latitude: this.latitude,
+            longitude: this.longitude,
           })
           break
         case "inventory-entry":
@@ -251,6 +288,7 @@ export class FormDialogComponent implements OnInit {
             this.focusFirstInventoryError(errors)
             return
           }
+
           await this.api.adjustInventory(this.productId, {
             type: "Ajuste",
             quantity: Number(this.quantity),
@@ -320,5 +358,24 @@ export class FormDialogComponent implements OnInit {
     } finally {
       this.loading.set(false)
     }
+  }
+
+  get serviceAreaWarning() {
+    if (this.latitude === null || this.longitude === null) return null
+    return advertenciaAreaServicio(
+      { latitud: this.warehouseLatitude, longitud: this.warehouseLongitude },
+      { latitud: this.latitude, longitud: this.longitude },
+      this.serviceRadiusKm,
+    )
+  }
+
+  updateLocation(location: { latitude: number; longitude: number }): void {
+    this.latitude = location.latitude
+    this.longitude = location.longitude
+    this.clientErrors.set(this.clientErrors().filter((message) => !message.includes("ubicación")))
+  }
+
+  clearClientErrors(): void {
+    this.clientErrors.set([])
   }
 }

@@ -9,6 +9,10 @@ import {
 } from "./public-tracking.js"
 
 export const publicRouter = Router()
+
+publicRouter.get("/api/maps-config", (_req, res) => {
+  res.json({ googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY ?? "" })
+})
 const trackingRateLimit = rateLimit({
   windowMs: 10 * 60_000,
   limit: 5,

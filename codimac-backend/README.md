@@ -8,6 +8,10 @@ del proyecto y deja `DATABASE_SSL=true`.
 
 1. Instala Node.js 20 o posterior y pnpm.
 2. Copia `.env.example` a `.env` y completa `DATABASE_URL` y `JWT_SECRET`.
+   `GOOGLE_MAPS_API_KEY` es opcional: si no se configura, el selector utiliza
+   Leaflet y OpenStreetMap. La clave de Google Maps JavaScript se expone al
+   navegador por diseño; restríngela en Google Cloud por HTTP referrer/dominio
+   y por API habilitada.
    `JWT_SECRET` debe ser aleatorio y tener al menos 32 caracteres. No publiques
    `.env`.
 3. Ejecuta `pnpm install`.
@@ -70,6 +74,12 @@ message and are limited to five attempts per IP every ten minutes. Successful
 responses contain only the queried order's status and, while it is in transit,
 its stop position, route stop count, and ETA; personal details and other
 orders' data are never returned.
+
+Client records require a nine-digit mobile number beginning with `9`, a
+5–150-character address, and map coordinates. The optional location reference
+is limited to 150 characters. Administrators can configure the service-area
+radius in route parameters; it defaults to 50 km and only triggers a warning
+when a new client lies outside the radius.
 
 Las escrituras de estado, stock, asignación, entrega e incidencia se ejecutan
 en transacciones PostgreSQL. La autorización de rol se valida en el servidor;

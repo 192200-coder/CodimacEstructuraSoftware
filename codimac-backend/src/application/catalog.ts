@@ -14,6 +14,7 @@ export interface CatalogParametersInput {
   warehouseLongitude: number
   fuelPrice: number
   minutesPerStop: number
+  serviceRadiusKm: number
 }
 
 export interface CatalogUser {
@@ -182,6 +183,7 @@ export function createCatalogUseCases(
                 warehouseLongitude: Number(before.warehouse_longitude),
                 fuelPrice: Number(before.fuel_price),
                 minutesPerStop: Number(before.minutes_per_stop),
+                serviceRadiusKm: Number(before.service_radius_km ?? 50),
               }
             : null,
           valorNuevo: {
@@ -189,6 +191,7 @@ export function createCatalogUseCases(
             warehouseLongitude: Number(result.warehouse_longitude),
             fuelPrice: Number(result.fuel_price),
             minutesPerStop: Number(result.minutes_per_stop),
+            serviceRadiusKm: Number(result.service_radius_km),
           },
         })
         return result

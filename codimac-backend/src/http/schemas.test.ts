@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { createRouteSchema, movementSchema } from "./schemas.js"
+import { clientSchema, createRouteSchema, movementSchema } from "./schemas.js"
 
 const validRoute = {
   orderIds: ["40000000-0000-4000-8000-000000000001"],
@@ -12,6 +12,32 @@ const validRoute = {
 describe("contrato de creación de repartos", () => {
   it("permite crear una ruta sin asignación para los flujos administrativos existentes", () => {
     expect(createRouteSchema.safeParse(validRoute).success).toBe(true)
+  })
+
+  describe("validación de datos de clientes", () => {
+    const validClient = {
+      name: "Cliente de prueba",
+      contact: "912345678",
+      address: "Av. Principal 120",
+      latitude: -13.6366,
+      longitude: -72.8814,
+    }
+
+    it("exige teléfono móvil válido y coordenadas del mapa, con referencia opcional", () => {
+      expect(clientSchema.safeParse(validClient).success).toBe(true)
+      expect(clientSchema.parse(validClient)).not.toHaveProperty("reference")
+      expect(clientSchema.safeParse({ ...validClient, reference: "Portón verde" }).success).toBe(true)
+      expect(clientSchema.safeParse({ ...validClient, contact: "812345678" }).success).toBe(false)
+      expect(clientSchema.safeParse({ ...validClient, contact: "+51912345678" }).success).toBe(false)
+      expect(clientSchema.safeParse({ ...validClient, latitude: undefined }).success).toBe(false)
+    })
+
+    it("limita longitud de dirección y referencia", () => {
+      expect(clientSchema.safeParse({ ...validClient, address: "Calle" }).success).toBe(true)
+      expect(clientSchema.safeParse({ ...validClient, address: "x".repeat(151) }).success).toBe(false)
+      expect(clientSchema.safeParse({ ...validClient, reference: "x".repeat(151) }).success).toBe(false)
+      expect(clientSchema.partial().parse({ contact: "912345678" })).not.toHaveProperty("reference")
+    })
   })
 
   describe("contrato de movimientos de inventario", () => {

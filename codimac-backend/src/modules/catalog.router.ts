@@ -8,17 +8,11 @@ import type {
 } from "../application/catalog.js"
 import { authenticate, requireRole } from "../http/auth.js"
 import { HttpError } from "../http/errors.js"
-import { idParamSchema, movementSchema, uuidSchema } from "../http/schemas.js"
+import { clientSchema, idParamSchema, movementSchema, uuidSchema } from "../http/schemas.js"
 
 const catalogs = {
   clients: {
-    schema: z.object({
-      name: z.string().trim().min(1).max(160),
-      contact: z.string().max(80).nullable().optional(),
-      address: z.string().trim().min(1).max(300),
-      latitude: z.coerce.number().min(-90).max(90),
-      longitude: z.coerce.number().min(-180).max(180),
-    }),
+    schema: clientSchema,
   },
   products: {
     schema: z.object({
@@ -89,6 +83,7 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
       warehouseLongitude: z.number().min(-180).max(180),
       fuelPrice: z.number().positive(),
       minutesPerStop: z.number().int().nonnegative(),
+      serviceRadiusKm: z.number().positive().max(1000),
     }).parse(req.body)
     res.json({ data: await useCases.updateParameters(body, req.user!.id) })
   })

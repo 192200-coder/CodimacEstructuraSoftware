@@ -277,6 +277,10 @@ export async function getTracking(
   }, false)
 }
 
+export async function getMapsConfig(): Promise<{ googleMapsApiKey: string }> {
+  return request("/maps-config", {}, false)
+}
+
 export async function getNotifications(): Promise<RemoteNotification[]> {
   const body = await request<{ notifications: RemoteNotification[] }>("/notifications")
   return body.notifications
@@ -486,6 +490,7 @@ export async function updateParameters(value: {
   warehouseLongitude: number
   fuelPrice: number
   minutesPerStop: number
+  serviceRadiusKm: number
 }) {
   return request("/admin/parameters", { method: "PUT", body: JSON.stringify(value) })
 }

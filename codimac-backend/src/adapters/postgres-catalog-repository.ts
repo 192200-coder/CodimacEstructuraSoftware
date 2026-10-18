@@ -16,7 +16,7 @@ import { loadDemoData } from "../db/demo-data.js"
 import { PostgresRegistroAuditoria } from "./postgres-registro-auditoria.js"
 
 const catalogFields: Record<CatalogResource, readonly string[]> = {
-  clients: ["name", "contact", "address", "latitude", "longitude"],
+  clients: ["name", "contact", "address", "reference", "latitude", "longitude"],
   products: ["name", "unit", "weight_kg", "total_stock", "active"],
   vehicles: [
     "plate",
@@ -46,17 +46,19 @@ class PostgresCatalogTransaction implements CatalogTransaction {
 
   async saveParameters(input: CatalogParametersInput, actorId: string): Promise<CatalogRecord> {
     const result = await this.client.query(
-      `INSERT INTO global_parameters(singleton,warehouse_latitude,warehouse_longitude,fuel_price,minutes_per_stop,updated_by)
-       VALUES(true,$1,$2,$3,$4,$5)
+      `INSERT INTO global_parameters(singleton,warehouse_latitude,warehouse_longitude,fuel_price,minutes_per_stop,service_radius_km,updated_by)
+       VALUES(true,$1,$2,$3,$4,$5,$6)
        ON CONFLICT(singleton) DO UPDATE SET warehouse_latitude=EXCLUDED.warehouse_latitude,
          warehouse_longitude=EXCLUDED.warehouse_longitude,fuel_price=EXCLUDED.fuel_price,
-         minutes_per_stop=EXCLUDED.minutes_per_stop,updated_by=EXCLUDED.updated_by,updated_at=now()
+         minutes_per_stop=EXCLUDED.minutes_per_stop,service_radius_km=EXCLUDED.service_radius_km,
+         updated_by=EXCLUDED.updated_by,updated_at=now()
        RETURNING *`,
       [
         input.warehouseLatitude,
         input.warehouseLongitude,
         input.fuelPrice,
         input.minutesPerStop,
+        input.serviceRadiusKm,
         actorId,
       ],
     )

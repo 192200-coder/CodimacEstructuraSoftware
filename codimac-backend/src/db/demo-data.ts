@@ -20,10 +20,10 @@ export async function loadDemoData(
   }
 
   await client.query(
-    `INSERT INTO clients(id,name,contact,address,latitude,longitude) VALUES
-      ('10000000-0000-4000-8000-000000000001','Cliente A','+51 900 000 001','Av. Principal 120',-13.620000,-72.865000),
-      ('10000000-0000-4000-8000-000000000002','Cliente B','+51 900 000 002','Jr. Los Pinos 432',-13.655000,-72.860000),
-      ('10000000-0000-4000-8000-000000000003','Cliente C','+51 900 000 003','Av. Universitaria 77',-13.650000,-72.910000)
+    `INSERT INTO clients(id,name,contact,address,reference,latitude,longitude) VALUES
+      ('10000000-0000-4000-8000-000000000001','Cliente A','900000001','Av. Principal 120','A una cuadra de la plaza',-13.620000,-72.865000),
+      ('10000000-0000-4000-8000-000000000002','Cliente B','900000002','Jr. Los Pinos 432','Portón azul',-13.655000,-72.860000),
+      ('10000000-0000-4000-8000-000000000003','Cliente C','900000003','Av. Universitaria 77','Frente al parque',-13.650000,-72.910000)
      ON CONFLICT(id) DO NOTHING;
      INSERT INTO products(id,name,unit,weight_kg,total_stock) VALUES
       ('20000000-0000-4000-8000-000000000001','Cemento tipo I','Bolsa de 42,5 kg',42.5,280),
@@ -34,8 +34,8 @@ export async function loadDemoData(
       ('30000000-0000-4000-8000-000000000001','ABC-123','Camioneta',1500,30,10),
       ('30000000-0000-4000-8000-000000000002','DEF-456','Camión',4000,25,8)
      ON CONFLICT(id) DO NOTHING;
-     INSERT INTO global_parameters(singleton,warehouse_latitude,warehouse_longitude,fuel_price,minutes_per_stop)
-      VALUES(true,-13.6366,-72.8814,6.2,8) ON CONFLICT(singleton) DO NOTHING;`,
+     INSERT INTO global_parameters(singleton,warehouse_latitude,warehouse_longitude,fuel_price,minutes_per_stop,service_radius_km)
+      VALUES(true,-13.6366,-72.8814,6.2,8,50) ON CONFLICT(singleton) DO NOTHING;`,
   )
 
   const createdBy = demoUsers[0].id

@@ -22,6 +22,7 @@ import {
   getOrders,
   getResources,
   getTracking,
+  getMapsConfig,
   markOrderReady,
   prepareOrder,
   reportStopIncident,
@@ -68,6 +69,7 @@ export class CodimacApiService {
     warehouseLongitude: number
     fuelPrice: number
     minutesPerStop: number
+    serviceRadiusKm: number
   }) {
     return updateParameters(value)
   }
@@ -177,5 +179,9 @@ export class CodimacApiService {
 
   getTracking(codigo: string, ultimos4: string): Promise<{ tracking: PublicTracking }> {
     return getTracking(codigo, ultimos4)
+  }
+
+  getMapsConfig(): Promise<{ googleMapsApiKey: string }> {
+    return getMapsConfig()
   }
 }

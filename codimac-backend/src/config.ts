@@ -10,6 +10,7 @@ const envSchema = z.object({
     .refine((value) => !value.startsWith("replace-with-"), "Reemplaza el JWT_SECRET de ejemplo"),
   CORS_ORIGIN: z.string().default("http://localhost:8443"),
   DATABASE_SSL: z.enum(["true", "false"]).default("true"),
+  GOOGLE_MAPS_API_KEY: z.string().default(""),
 })
 
 const parsed = envSchema.safeParse(process.env)

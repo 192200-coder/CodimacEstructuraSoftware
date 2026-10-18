@@ -49,6 +49,14 @@ export const createOrderSchema = z.object({
 }).refine((value) => new Set(value.items.map((item) => item.productId)).size === value.items.length, {
   message: "No se permiten productos duplicados en un pedido",
 })
+export const clientSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  contact: z.string().regex(/^9\d{8}$/, "El teléfono debe tener 9 dígitos y comenzar con 9."),
+  address: z.string().trim().min(5).max(150),
+  reference: z.string().trim().max(150).optional(),
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
+}).strict()
 export const createRouteSchema = z.object({
   orderIds: z.array(uuidSchema).min(1).max(10),
   distanceKm: z.number().nonnegative().finite(),

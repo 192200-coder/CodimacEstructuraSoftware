@@ -39,6 +39,14 @@ describe("API CODIMAC", () => {
     expect(await response.json()).toMatchObject({ status: "ok", service: "codimac" })
   })
 
+  it("publica configuración de mapas con clave pública opcional", async () => {
+    const response = await fetch(`${baseUrl}/api/maps-config`)
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      googleMapsApiKey: expect.any(String),
+    })
+  })
+
   it("permite el preflight CORS del cliente Angular configurado", async () => {
     const response = await fetch(`${baseUrl}/api/auth/login`, {
       method: "OPTIONS",

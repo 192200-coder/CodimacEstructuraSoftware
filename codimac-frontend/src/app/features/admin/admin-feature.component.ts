@@ -12,6 +12,7 @@ interface RouteParameters {
   warehouse_longitude: string | number
   fuel_price: string | number
   minutes_per_stop: string | number
+  service_radius_km?: string | number
 }
 
 @Component({
@@ -48,6 +49,7 @@ export class AdminFeatureComponent {
   warehouseLongitude = -72.8814
   fuelPrice = 6.2
   minutesPerStop = 8
+  serviceRadiusKm = 50
   parametersConfigured = false
 
   constructor(
@@ -119,6 +121,7 @@ export class AdminFeatureComponent {
         warehouseLongitude: Number(this.warehouseLongitude),
         fuelPrice: Number(this.fuelPrice),
         minutesPerStop: Number(this.minutesPerStop),
+        serviceRadiusKm: Number(this.serviceRadiusKm),
       })
       this.parametersConfigured = true
       this.state.showToast("Parámetros de ruta guardados correctamente.")
@@ -332,6 +335,7 @@ export class AdminFeatureComponent {
           this.warehouseLongitude = Number(parameters.warehouse_longitude)
           this.fuelPrice = Number(parameters.fuel_price)
           this.minutesPerStop = Number(parameters.minutes_per_stop)
+          this.serviceRadiusKm = Number(parameters.service_radius_km ?? 50)
         }
       }
     } catch (error) {
