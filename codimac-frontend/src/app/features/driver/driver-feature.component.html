@@ -39,7 +39,25 @@
         @if (currentRemoteStop; as stop) {
           <div class="delivery-heading"><div><p class="mobile-eyebrow">PARADA {{ stop.sequence_number }} DE {{ remoteRoute()?.route_stops?.length }}</p><h2>{{ currentClientName }}</h2></div><codimac-status [status]="stop.status" /></div>
           <div class="mobile-address"><codimac-icon name="pin" /><div><strong>{{ currentClientAddress }}</strong><span>Dirección de entrega</span></div></div>
-          <div class="mobile-contact"><button type="button" (click)="openMap()"><codimac-icon name="route" />Abrir mapa</button><button type="button" (click)="callClient()"><codimac-icon name="user" />Llamar</button></div>
+          <div class="driver-client-reference"><strong>Referencia de ubicación</strong><span>{{ currentClientReference }}</span></div>
+          <div class="driver-client-phone"><strong>Teléfono de contacto</strong>@if (clientPhoneHref; as phoneHref) {<a [href]="phoneHref">{{ currentClientContact }}</a>} @else {<span>Sin teléfono registrado</span>}</div>
+          @if (mapPreviewUrl; as previewUrl) {
+            <iframe class="driver-map-preview" [src]="previewUrl" title="Vista previa de la ubicación del cliente" loading="lazy" referrerpolicy="no-referrer"></iframe>
+          } @else {
+            <p class="driver-map-unavailable">Este destino no tiene coordenadas para mostrar el mapa.</p>
+          }
+          <div class="mobile-contact">
+            @if (googleMapsDirectionsUrl; as directionsUrl) {
+              <a [href]="directionsUrl" target="_blank" rel="noopener noreferrer"><codimac-icon name="route" />Cómo llegar</a>
+            } @else {
+              <button type="button" disabled><codimac-icon name="route" />Cómo llegar</button>
+            }
+            @if (clientPhoneHref; as phoneHref) {
+              <a [href]="phoneHref"><codimac-icon name="user" />Llamar</a>
+            } @else {
+              <button type="button" disabled><codimac-icon name="user" />Llamar</button>
+            }
+          </div>
           <div class="delivery-guide"><p class="mobile-eyebrow">QUÉ HACER EN ESTA PARADA</p><div><span>1</span><p><strong>Verifica el pedido</strong><small>{{ remoteItemCount }} productos · {{ remoteUnitCount }} unidades</small></p></div><div><span>2</span><p><strong>Entrega y solicita el nombre</strong><small>Registra quién recibe el pedido</small></p></div><div><span>3</span><p><strong>Confirma o reporta un problema</strong><small>No cierres la parada sin registrar el resultado</small></p></div></div>
           <div class="mobile-products"><p class="mobile-eyebrow">PRODUCTOS A ENTREGAR</p>
             @for (item of stop.orders?.order_items ?? []; track $index) {

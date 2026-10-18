@@ -35,7 +35,7 @@
         <div class="product-line"><div><strong>{{ item.products.name }}</strong><span>{{ item.products.unit }}</span></div><b>{{ item.quantity }}</b></div>
       }
       <div class="panel-actions">
-        <button class="button secondary" type="button" [disabled]="!['Pendiente','En preparación','Listo'].includes(order.status)" (click)="updateSelected('cancel')">Cancelar</button>
+        <button class="button secondary" type="button" [disabled]="!['Pendiente','En preparación','Listo'].includes(order.status)" (click)="requestCancellation()">Cancelar</button>
         <button class="button primary" type="button" [disabled]="!['Pendiente','En preparación'].includes(order.status)" (click)="updateSelected('prepare')">
           {{ order.status === "Pendiente" ? "Pasar a preparación" : order.status === "En preparación" ? "Marcar Listo" : "Actualizar estado" }}
         </button>
@@ -46,3 +46,30 @@
     }
   </aside>
 </div>
+@if (pendingCancellation(); as order) {
+  <div class="dialog-backdrop" (click)="closeCancellation()">
+    <section
+      class="dialog cancellation-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cancel-order-title"
+      aria-describedby="cancel-order-message"
+      (click)="$event.stopPropagation()"
+    >
+      <header class="dialog-header">
+        <div><p class="section-kicker">CODIMAC · M-04</p><h2 id="cancel-order-title">Cancelar pedido</h2></div>
+        <button class="icon-button" type="button" aria-label="Cerrar confirmación" [disabled]="cancellationInProgress()" (click)="closeCancellation()"><codimac-icon name="close" /></button>
+      </header>
+      <div class="dialog-body">
+        <div class="dialog-confirm danger">
+          <div><codimac-icon name="close" [size]="24" /></div>
+          <p id="cancel-order-message">¿Cancelar el pedido {{ order.code }}? Se liberarán las unidades reservadas. Esta acción no se puede deshacer.</p>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button class="button secondary" type="button" [disabled]="cancellationInProgress()" (click)="closeCancellation()">No, volver</button>
+        <button class="button danger-primary" type="button" [disabled]="cancellationInProgress()" (click)="confirmCancellation()">{{ cancellationInProgress() ? "Cancelando…" : "Sí, cancelar pedido" }}</button>
+      </footer>
+    </section>
+  </div>
+}

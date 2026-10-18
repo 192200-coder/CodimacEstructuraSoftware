@@ -1,4 +1,5 @@
 import { Component, effect, OnDestroy, signal } from "@angular/core"
+import { DomSanitizer, type SafeResourceUrl } from "@angular/platform-browser"
 import { DatePipe } from "@angular/common"
 import { FormsModule } from "@angular/forms"
 import { AppStateService } from "../../core/app-state.service"
@@ -10,6 +11,11 @@ import type {
 } from "../../../lib/codimac-api"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
+import {
+  clientTelephoneUrl,
+  driverDirectionsUrl,
+  driverMapPreviewUrl,
+} from "../../../dominio/driver-links"
 
 @Component({
   selector: "codimac-driver",
@@ -31,6 +37,7 @@ export class DriverFeatureComponent implements OnDestroy {
   constructor(
     readonly state: AppStateService,
     private readonly api: CodimacApiService,
+    private readonly sanitizer: DomSanitizer,
   ) {
     effect(() => {
       if (this.state.isOnline()) {
@@ -108,6 +115,31 @@ export class DriverFeatureComponent implements OnDestroy {
 
   get currentClientAddress(): string {
     return this.currentRemoteStop?.orders?.clients?.address ?? "Dirección no disponible"
+  }
+
+  get currentClientReference(): string {
+    return this.currentRemoteStop?.orders?.clients?.reference?.trim() || "Sin referencia registrada"
+  }
+
+  get currentClientContact(): string {
+    return this.currentRemoteStop?.orders?.clients?.contact ?? ""
+  }
+
+  get clientPhoneHref(): string | null {
+    return clientTelephoneUrl(this.currentRemoteStop?.orders?.clients?.contact)
+  }
+
+  get googleMapsDirectionsUrl(): string | null {
+    const client = this.currentRemoteStop?.orders?.clients
+    if (client?.latitude === undefined || client.longitude === undefined) return null
+    return driverDirectionsUrl(Number(client.latitude), Number(client.longitude))
+  }
+
+  get mapPreviewUrl(): SafeResourceUrl | null {
+    const client = this.currentRemoteStop?.orders?.clients
+    if (client?.latitude === undefined || client.longitude === undefined) return null
+    const url = driverMapPreviewUrl(Number(client.latitude), Number(client.longitude))
+    return url ? this.sanitizer.bypassSecurityTrustResourceUrl(url) : null
   }
 
   get currentEta(): string {
@@ -196,22 +228,12 @@ export class DriverFeatureComponent implements OnDestroy {
   }
 
   openMap(): void {
-    const client = this.currentRemoteStop?.orders?.clients
-    if (client?.latitude !== undefined && client.longitude !== undefined) {
-      const query = encodeURIComponent(`${client.latitude},${client.longitude}`)
-      window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, "_blank", "noopener,noreferrer")
+    const url = this.googleMapsDirectionsUrl
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer")
       return
     }
     this.state.showToast("Este destino no tiene coordenadas registradas.")
-  }
-
-  callClient(): void {
-    const contact = this.currentRemoteStop?.orders?.clients?.contact
-    if (!contact) {
-      this.state.showToast("Este cliente no tiene un teléfono registrado.")
-      return
-    }
-    window.location.href = `tel:${contact.replace(/[^\d+]/g, "")}`
   }
 
   async logout(): Promise<void> {

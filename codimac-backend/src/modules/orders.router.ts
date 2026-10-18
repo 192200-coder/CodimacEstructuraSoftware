@@ -170,11 +170,58 @@ ordersRouter.post("/:id/cancel", requireRole("Despachador"), async (req, res) =>
     const result = await client.query("SELECT status,active_route_id FROM orders WHERE id=$1 FOR UPDATE", [id])
     if (!result.rowCount) throw new HttpError(404, "Pedido no encontrado")
     const previous = result.rows[0].status as string
-    if (result.rows[0].active_route_id) {
-      throw new HttpError(409, "El pedido ya pertenece a un reparto activo")
-    }
     if (!["Pendiente", "En preparación", "Listo"].includes(previous)) {
       throw new HttpError(409, "El pedido ya no puede cancelarse")
+    }
+    const activeRouteId = result.rows[0].active_route_id as string | null
+    if (activeRouteId) {
+      const routeResult = await client.query(
+        "SELECT status,driver_id,vehicle_id FROM routes WHERE id=$1 FOR UPDATE",
+        [activeRouteId],
+      )
+      const route = routeResult.rows[0]
+      if (!route || !["Aprobada", "Asignada"].includes(route.status as string)) {
+        throw new HttpError(409, "El pedido pertenece a un reparto que ya no puede modificarse")
+      }
+      const stop = await client.query(
+        "SELECT id FROM route_stops WHERE route_id=$1 AND order_id=$2 FOR UPDATE",
+        [activeRouteId, id],
+      )
+      if (stop.rowCount) {
+        await client.query("DELETE FROM status_events WHERE stop_id=$1", [stop.rows[0].id])
+        await client.query("DELETE FROM route_stops WHERE id=$1", [stop.rows[0].id])
+      }
+      await client.query("UPDATE orders SET active_route_id=NULL,updated_at=now() WHERE id=$1", [id])
+      const remainingStops = await client.query(
+        "SELECT id FROM route_stops WHERE route_id=$1 ORDER BY sequence_number",
+        [activeRouteId],
+      )
+      if (!remainingStops.rowCount) {
+        if (route.status === "Asignada") {
+          if (route.vehicle_id) {
+            await client.query("UPDATE vehicles SET available=true,updated_at=now() WHERE id=$1", [
+              route.vehicle_id,
+            ])
+          }
+          await client.query(
+            "UPDATE routes SET status='Aprobada',driver_id=NULL,vehicle_id=NULL,updated_at=now() WHERE id=$1",
+            [activeRouteId],
+          )
+        }
+        await client.query("DELETE FROM status_events WHERE route_id=$1", [activeRouteId])
+        await client.query("DELETE FROM routes WHERE id=$1", [activeRouteId])
+      } else if (stop.rowCount) {
+        await client.query(
+          "UPDATE route_stops SET sequence_number=sequence_number+$2 WHERE route_id=$1",
+          [activeRouteId, remainingStops.rowCount + 1],
+        )
+        for (const [index, remainingStop] of remainingStops.rows.entries()) {
+          await client.query(
+            "UPDATE route_stops SET sequence_number=$2 WHERE id=$1",
+            [remainingStop.id, index + 1],
+          )
+        }
+      }
     }
     const reservations = await client.query(
       "SELECT product_id,quantity FROM stock_reservations WHERE order_id=$1 AND released_at IS NULL FOR UPDATE",
@@ -182,10 +229,13 @@ ordersRouter.post("/:id/cancel", requireRole("Despachador"), async (req, res) =>
     )
     for (const row of reservations.rows) {
       const product = await client.query(
-        `UPDATE products SET reserved_stock=GREATEST(0,reserved_stock-$2),updated_at=now()
-         WHERE id=$1 RETURNING total_stock,reserved_stock`,
+        `UPDATE products SET reserved_stock=reserved_stock-$2,updated_at=now()
+         WHERE id=$1 AND reserved_stock >= $2 RETURNING total_stock,reserved_stock`,
         [row.product_id, row.quantity],
       )
+      if (!product.rowCount) {
+        throw new HttpError(409, "La reserva de inventario ya no está disponible")
+      }
       await client.query(
         "UPDATE stock_reservations SET released_at=now() WHERE order_id=$1 AND product_id=$2",
         [id, row.product_id],
@@ -210,7 +260,10 @@ ordersRouter.post("/:id/cancel", requireRole("Despachador"), async (req, res) =>
         valorNuevo: { existencias: Number(after.total_stock), reservadas: Number(after.reserved_stock) },
       })
     }
-    await client.query("UPDATE orders SET status='Cancelado',updated_at=now() WHERE id=$1", [id])
+    await client.query(
+      "UPDATE orders SET status='Cancelado',active_route_id=NULL,updated_at=now() WHERE id=$1",
+      [id],
+    )
     await client.query(
       "INSERT INTO status_events(entity_type,entity_id,previous_status,new_status,actor_id) VALUES('Pedido',$1,$2,'Cancelado',$3)",
       [id, previous, req.user!.id],

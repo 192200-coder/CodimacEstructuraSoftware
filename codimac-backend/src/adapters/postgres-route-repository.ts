@@ -527,7 +527,7 @@ export class PostgresRouteRepository implements RouteRepository {
            'id',s.id,'sequence_number',s.sequence_number,'status',s.status,'attempts',s.attempts,
            'eta_at',s.eta_at,'orders',jsonb_build_object(
              'code',o.codigo,'clients',jsonb_build_object(
-               'name',c.name,'address',c.address,'contact',c.contact,
+               'name',c.name,'address',c.address,'reference',c.reference,'contact',c.contact,
                'latitude',c.latitude,'longitude',c.longitude
              ),
              'order_items',COALESCE((

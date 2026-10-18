@@ -1,4 +1,4 @@
-import { Component, effect, signal } from "@angular/core"
+import { Component, effect, HostListener, signal } from "@angular/core"
 import { DatePipe } from "@angular/common"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
@@ -28,6 +28,8 @@ export class OrdersPageComponent {
   readonly remoteLoaded = signal(false)
   readonly selectedCode = signal("")
   readonly search = signal("")
+  readonly pendingCancellation = signal<RemoteOrder | null>(null)
+  readonly cancellationInProgress = signal(false)
 
   constructor(
     readonly state: AppStateService,
@@ -91,16 +93,54 @@ export class OrdersPageComponent {
       this.remoteOrders()[0]
   }
 
-  async updateSelected(kind: "prepare" | "cancel"): Promise<void> {
+  requestCancellation(): void {
+    const order = this.selectedRemote
+    if (!order) {
+      this.state.showToast("Selecciona un pedido cargado desde el backend.")
+      return
+    }
+    if (!["Pendiente", "En preparación", "Listo"].includes(order.status)) {
+      this.state.showToast("El pedido ya no puede cancelarse.")
+      return
+    }
+    this.pendingCancellation.set(order)
+  }
+
+  closeCancellation(): void {
+    if (!this.cancellationInProgress()) this.pendingCancellation.set(null)
+  }
+
+  @HostListener("document:keydown.escape")
+  closeCancellationOnEscape(): void {
+    this.closeCancellation()
+  }
+
+  async confirmCancellation(): Promise<void> {
+    const order = this.pendingCancellation()
+    if (!order || this.cancellationInProgress()) return
+    this.cancellationInProgress.set(true)
+    try {
+      await this.api.cancelOrder(order.id)
+      this.pendingCancellation.set(null)
+      await this.reloadOrders()
+      this.state.showToast("Pedido cancelado y reservas liberadas.")
+    } catch (error) {
+      this.state.showToast(
+        error instanceof Error ? error.message : "No se pudo cancelar el pedido.",
+      )
+    } finally {
+      this.cancellationInProgress.set(false)
+    }
+  }
+
+  async updateSelected(kind: "prepare"): Promise<void> {
     const order = this.selectedRemote
     if (!order) {
       this.state.showToast("Selecciona un pedido cargado desde el backend.")
       return
     }
     try {
-      if (kind === "cancel") {
-        await this.api.cancelOrder(order.id)
-      } else if (order.status === "Pendiente") {
+      if (order.status === "Pendiente") {
         await this.api.prepareOrder(order.id)
       } else if (order.status === "En preparación") {
         await this.api.markOrderReady(order.id)
@@ -109,11 +149,9 @@ export class OrdersPageComponent {
       }
       await this.reloadOrders()
       this.state.showToast(
-        kind === "cancel"
-          ? "Pedido cancelado y reservas liberadas."
-          : order.status === "Pendiente"
-            ? "Stock reservado; pedido en preparación."
-            : "Pedido marcado como Listo.",
+        order.status === "Pendiente"
+          ? "Stock reservado; pedido en preparación."
+          : "Pedido marcado como Listo.",
       )
     } catch (error) {
       this.state.showToast(

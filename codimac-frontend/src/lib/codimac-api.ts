@@ -163,6 +163,8 @@ export const codimacAuth = {
 export interface RemoteClient {
   name: string
   address: string
+  reference?: string | null
+  contact?: string | null
   latitude?: number
   longitude?: number
 }
@@ -189,7 +191,7 @@ export interface RemoteStop {
   eta_at?: string | null
   orders?: {
     code: string
-    clients?: RemoteClient & { contact?: string | null } | null
+    clients?: RemoteClient | null
     order_items?: Array<{ quantity: number | string; products: { name: string; unit: string } }>
   } | null
 }
