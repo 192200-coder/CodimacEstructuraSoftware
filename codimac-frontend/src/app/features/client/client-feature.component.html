@@ -1,6 +1,11 @@
 <div class="phone-stage client-stage">
   <div class="mobile-screen client-screen">
-    <div class="client-logo"><div class="brand-mark"><span>C</span></div><strong>CODIMAC</strong></div>
+    <div class="client-header">
+      <button class="client-logo" type="button" aria-label="CODIMAC, volver al inicio de sesión" (click)="returnToLogin()">
+        <span class="brand-mark"><span>C</span></span><strong>CODIMAC</strong>
+      </button>
+      <button class="client-back-link" type="button" (click)="returnToLogin()">← Volver</button>
+    </div>
     @if (!found()) {
       <div class="lookup"><p class="mobile-eyebrow">SEGUIMIENTO DE PEDIDOS</p><h2>Consulta tu entrega</h2><p>Ingresa el código privado de seguimiento que recibiste al registrar tu pedido. Es distinto al código visible, como COD-101.</p>
         <label class="mobile-field">Código privado de seguimiento<input autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="36" [value]="code()" (input)="updateCode($event)" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" /></label>
@@ -22,9 +27,6 @@
         <div class="privacy-note">Solo mostramos información relacionada con tu pedido.</div>
       </div>
     }
-    <footer>
-      <span>¿Necesitas ayuda? Comunícate con CODIMAC</span>
-      <button class="client-login-button" type="button" (click)="returnToLogin()">Volver al inicio de sesión</button>
-    </footer>
+    <footer>¿Necesitas ayuda? Comunícate con CODIMAC</footer>
   </div>
 </div>
