@@ -241,6 +241,30 @@ export interface RemoteRouteSummary {
   }>
 }
 
+export interface RemoteClosedRoute extends RemoteRouteSummary {
+  started_at: string | null
+  closed_at: string | null
+  duration_minutes: number | string | null
+  result: string
+  delivered: number
+  not_delivered: number
+}
+
+export interface RemoteInventoryMovement {
+  id: string
+  fecha_hora: string
+  producto_id: string
+  tipo: "ENTRADA" | "AJUSTE" | "RESERVA" | "LIBERACION" | "SALIDA"
+  cantidad: number | string
+  usuario_id: string
+  usuario: string
+  pedido_id: string | null
+  pedido_codigo: string | null
+  motivo: string | null
+  detalle: string | null
+  observation: string | null
+}
+
 export interface RemoteNotification {
   id: string
   entity_type: "Pedido" | "Parada" | "Ruta"
@@ -334,6 +358,18 @@ export async function getDriverRouteSummary(id: string): Promise<RemoteRouteSumm
 export async function getRoutes(): Promise<RemoteRouteSummary[]> {
   const body = await request<{ routes: RemoteRouteSummary[] }>("/routes")
   return body.routes
+}
+
+export async function getClosedRouteHistory(): Promise<RemoteClosedRoute[]> {
+  const body = await request<{ routes: RemoteClosedRoute[] }>("/routes/history")
+  return body.routes
+}
+
+export async function getInventoryMovements(productId: string): Promise<RemoteInventoryMovement[]> {
+  const body = await request<{ movements: RemoteInventoryMovement[] }>(
+    `/inventory/${encodeURIComponent(productId)}/movements`,
+  )
+  return body.movements
 }
 
 export async function createRoute(input: {

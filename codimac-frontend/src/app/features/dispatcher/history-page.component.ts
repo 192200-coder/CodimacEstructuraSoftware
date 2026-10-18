@@ -2,7 +2,7 @@ import { Component, effect, signal } from "@angular/core"
 import { DatePipe } from "@angular/common"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
-import type { RemoteRouteSummary } from "../../../lib/codimac-api"
+import type { RemoteClosedRoute } from "../../../lib/codimac-api"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import { matchesCodeSearch } from "../../../dominio/busqueda-codigo"
@@ -14,7 +14,7 @@ import { matchesCodeSearch } from "../../../dominio/busqueda-codigo"
   templateUrl: "./history-page.component.html",
 })
 export class HistoryPageComponent {
-  readonly routes = signal<RemoteRouteSummary[]>([])
+  readonly routes = signal<RemoteClosedRoute[]>([])
   readonly selectedId = signal("")
   readonly loaded = signal(false)
   readonly search = signal("")
@@ -28,18 +28,18 @@ export class HistoryPageComponent {
     })
   }
 
-  get filteredRoutes(): RemoteRouteSummary[] {
+  get filteredRoutes(): RemoteClosedRoute[] {
     const query = this.search().trim().toLocaleLowerCase()
     return query
-      ? this.routes().filter((route) => route.status === "Cerrada").filter((route) =>
+      ? this.routes().filter((route) =>
           matchesCodeSearch(route.code, query) ||
           `${route.driver_name ?? ""} ${route.vehicle_plate ?? ""}`
             .toLocaleLowerCase().includes(query),
         )
-      : this.routes().filter((route) => route.status === "Cerrada")
+      : this.routes()
   }
 
-  get selectedRoute(): RemoteRouteSummary | undefined {
+  get selectedRoute(): RemoteClosedRoute | undefined {
     return this.filteredRoutes.find((route) => route.id === this.selectedId())
   }
 
@@ -49,16 +49,17 @@ export class HistoryPageComponent {
 
   exportCsv(): void {
     const rows = [
-      ["Reparto", "Fecha", "Chofer", "Vehículo", "Estado", "Paradas", "Distancia", "Tiempo", "Combustible"],
+      ["Reparto", "Fecha", "Chofer", "Vehículo", "Resultado", "Paradas", "Distancia km", "Tiempo min", "Litros", "Costo"],
       ...this.filteredRoutes.map((route) => [
         route.code,
         new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeZone: "America/Lima" }).format(new Date(route.created_at)),
         route.driver_name ?? "",
         route.vehicle_plate ?? "",
-        route.status,
+        route.result,
         String(route.stop_count),
         String(route.distance_km ?? ""),
         String(route.estimated_minutes ?? ""),
+        String(route.estimated_liters ?? ""),
         String(route.estimated_cost ?? ""),
       ]),
     ]
@@ -75,9 +76,9 @@ export class HistoryPageComponent {
 
   private async loadRoutes(): Promise<void> {
     try {
-      const routes = await this.api.getRoutes()
+      const routes = await this.api.getClosedRouteHistory()
       this.routes.set(routes)
-      this.selectedId.set(routes.find((route) => route.status === "Cerrada")?.id ?? "")
+      this.selectedId.set(routes[0]?.id ?? "")
     } catch (error) {
       this.state.showToast(error instanceof Error ? error.message : "No se pudo cargar el historial.")
     } finally {

@@ -197,7 +197,7 @@ const transactionClient = {
     }
     if (sql.includes("INSERT INTO inventory_movements")) {
       inventoryMovements.push({
-        type: sql.includes("'Liberación'") ? "Liberación" : "Reserva",
+        type: sql.includes("'LIBERACION'") ? "LIBERACION" : "RESERVA",
         quantity: Number(values[1]),
         actorId: values[3] as string,
       })
@@ -431,7 +431,7 @@ describe("flujo HTTP de disponibilidad y reserva de pedidos", () => {
       } else {
         expect(reservations.get(orderId)).toEqual({ quantity: 10, released: true })
         expect(inventoryMovements).toContainEqual({
-          type: "Liberación",
+          type: "LIBERACION",
           quantity: 10,
           actorId,
         })
@@ -495,6 +495,6 @@ describe("flujo HTTP de disponibilidad y reserva de pedidos", () => {
     expect(routeStops.size).toBe(0)
     expect(routes.has(routeId)).toBe(false)
     expect(reserved).toBe(0)
-    expect(inventoryMovements).toContainEqual({ type: "Liberación", quantity: 10, actorId })
+    expect(inventoryMovements).toContainEqual({ type: "LIBERACION", quantity: 10, actorId })
   })
 })

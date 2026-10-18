@@ -1,8 +1,10 @@
 import { Component, effect, signal } from "@angular/core"
+import { DatePipe } from "@angular/common"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
+import type { RemoteInventoryMovement } from "../../../lib/codimac-api"
 
 interface InventoryRow {
   id: string
@@ -16,11 +18,15 @@ interface InventoryRow {
 @Component({
   selector: "codimac-inventory-page",
   standalone: true,
-  imports: [IconComponent, StatusBadgeComponent],
+  imports: [DatePipe, IconComponent, StatusBadgeComponent],
   templateUrl: "./inventory-page.component.html",
 })
 export class InventoryPageComponent {
+  readonly activeTab = signal<"stock" | "movements">("stock")
   readonly remoteProducts = signal<InventoryRow[]>([])
+  readonly selectedProductId = signal("")
+  readonly movements = signal<RemoteInventoryMovement[]>([])
+  readonly movementsLoaded = signal(false)
   readonly remoteLoaded = signal(false)
   readonly search = signal("")
 
@@ -54,6 +60,35 @@ export class InventoryPageComponent {
 
   setSearch(event: Event): void {
     this.search.set((event.target as HTMLInputElement).value)
+  }
+
+  get selectedProduct(): InventoryRow | undefined {
+    return this.remoteProducts().find((product) => product.id === this.selectedProductId())
+  }
+
+  showStock(): void {
+    this.activeTab.set("stock")
+  }
+
+  showMovements(productId = this.selectedProductId()): void {
+    this.activeTab.set("movements")
+    if (productId) {
+      this.selectedProductId.set(productId)
+      void this.loadMovements(productId)
+    }
+  }
+
+  private async loadMovements(productId: string): Promise<void> {
+    this.movementsLoaded.set(false)
+    this.movements.set([])
+    try {
+      const movements = await this.api.getInventoryMovements(productId)
+      if (this.selectedProductId() === productId) this.movements.set(movements)
+    } catch (error) {
+      this.state.showToast(error instanceof Error ? error.message : "No se pudieron cargar los movimientos.")
+    } finally {
+      if (this.selectedProductId() === productId) this.movementsLoaded.set(true)
+    }
   }
 
   private async loadProducts(): Promise<void> {

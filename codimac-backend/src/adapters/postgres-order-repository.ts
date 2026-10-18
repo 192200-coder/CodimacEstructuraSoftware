@@ -111,8 +111,8 @@ class PostgresOrderTransaction implements OrderRepositoryTransaction {
       [input.orderId, input.productId, input.quantity],
     )
     await this.client.query(
-      "INSERT INTO inventory_movements(product_id,movement_type,quantity,reason,actor_id) VALUES($1,'Reserva',$2,$3,$4)",
-      [input.productId, input.quantity, `Reserva para pedido ${input.orderId}`, input.actorId],
+      "INSERT INTO inventory_movements(producto_id,tipo,cantidad,motivo,usuario_id,pedido_id) VALUES($1,'RESERVA',$2,$3,$4,$5)",
+      [input.productId, input.quantity, `Reserva para pedido ${input.orderId}`, input.actorId, input.orderId],
     )
   }
 
@@ -213,12 +213,13 @@ class PostgresOrderTransaction implements OrderRepositoryTransaction {
       [input.orderId, input.productId],
     )
     await this.client.query(
-      "INSERT INTO inventory_movements(product_id,movement_type,quantity,reason,actor_id) VALUES($1,'Liberación',$2,$3,$4)",
+      "INSERT INTO inventory_movements(producto_id,tipo,cantidad,motivo,usuario_id,pedido_id) VALUES($1,'LIBERACION',$2,$3,$4,$5)",
       [
         input.productId,
         input.quantity,
         `Liberación por cancelación del pedido ${input.orderId}`,
         input.actorId,
+        input.orderId,
       ],
     )
     return {

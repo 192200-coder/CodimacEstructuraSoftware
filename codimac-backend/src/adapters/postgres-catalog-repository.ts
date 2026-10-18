@@ -151,13 +151,17 @@ class PostgresCatalogTransaction implements CatalogTransaction {
     detail: string | null
     actorId: string
   }): Promise<void> {
+    const movementTypes = {
+      Entrada: "ENTRADA",
+      Ajuste: "AJUSTE",
+    } as const
     await this.client.query(
       `INSERT INTO inventory_movements
-         (product_id,movement_type,quantity,reason,observation,detail,actor_id)
+         (producto_id,tipo,cantidad,motivo,observation,detalle,usuario_id)
        VALUES($1,$2,$3,$4,$5,$6,$7)`,
       [
         input.productId,
-        input.movementType,
+        movementTypes[input.movementType],
         input.quantity,
         input.reason,
         input.observation,
@@ -288,6 +292,21 @@ export class PostgresCatalogRepository implements CatalogRepository {
        FROM audit_events e JOIN profiles p ON p.id=e.actor_id
        ORDER BY e.created_at DESC LIMIT $1`,
       [limit],
+    )
+    return result.rows
+  }
+
+  async listInventoryMovements(productId: string): Promise<unknown[]> {
+    const result = await pool.query(
+      `SELECT m.id,m.fecha_hora,m.producto_id,m.tipo,m.cantidad,m.usuario_id,
+         m.pedido_id,m.motivo,m.detalle,m.observation,
+         p.display_name AS usuario,o.codigo AS pedido_codigo
+       FROM inventory_movements m
+       JOIN profiles p ON p.id=m.usuario_id
+       LEFT JOIN orders o ON o.id=m.pedido_id
+       WHERE m.producto_id=$1
+       ORDER BY m.fecha_hora DESC,m.id DESC`,
+      [productId],
     )
     return result.rows
   }

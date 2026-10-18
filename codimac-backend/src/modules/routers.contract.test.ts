@@ -33,6 +33,13 @@ function createRouteUseCasesMock(): RouteUseCases {
     deliver: vi.fn(async () => undefined),
     reportIncident: vi.fn(async () => "Reprogramada" as const),
     list: vi.fn(async () => []),
+    closedHistory: vi.fn(async () => [{
+      id: "route-closed",
+      code: "R-001",
+      status: "Cerrada",
+      result: "Completado",
+      stop_count: 1,
+    }]),
     driverRoute: vi.fn(async () => null),
     routeSummary: vi.fn(async () => ({})),
   }
@@ -67,6 +74,11 @@ function createCatalogUseCasesMock(): CatalogUseCases {
     listIndicators: vi.fn(async () => []),
     listAudit: vi.fn(async () => ({ events: [], total: 0 })),
     listLegacyEvents: vi.fn(async () => []),
+    listInventoryMovements: vi.fn(async () => [{
+      id: "movement-1",
+      tipo: "ENTRADA",
+      cantidad: "5",
+    }]),
   }
 }
 
@@ -90,6 +102,36 @@ afterEach(async () => {
 })
 
 describe("contratos HTTP de los routers refactorizados", () => {
+  it("devuelve solo el historial operativo de rutas cerradas", async () => {
+    const response = await fetch(`${baseUrl}/api/routes/history`)
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      routes: [{
+        id: "route-closed",
+        code: "R-001",
+        status: "Cerrada",
+        result: "Completado",
+        stop_count: 1,
+      }],
+    })
+  })
+
+  it("expone los movimientos cronológicos del producto", async () => {
+    const response = await fetch(
+      `${baseUrl}/api/inventory/20000000-0000-4000-8000-000000000001/movements`,
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({
+      movements: [{
+        id: "movement-1",
+        tipo: "ENTRADA",
+        cantidad: "5",
+      }],
+    })
+  })
+
   it("mantiene el contrato de creación de reparto", async () => {
     const response = await fetch(`${baseUrl}/api/routes`, {
       method: "POST",

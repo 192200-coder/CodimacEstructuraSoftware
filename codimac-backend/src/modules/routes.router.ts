@@ -21,6 +21,10 @@ export function createRoutesRouter(useCases: RouteUseCases) {
     })
   })
 
+  router.get("/routes/history", requireRole("Despachador", "Administrador"), async (_req, res) => {
+    res.json({ routes: await useCases.closedHistory() })
+  })
+
   router.get("/routes", requireRole("Despachador", "Administrador"), async (_req, res) => {
     res.json({ routes: await useCases.list() })
   })

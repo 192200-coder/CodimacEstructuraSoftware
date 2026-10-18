@@ -6,6 +6,7 @@ import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { AuditEvent } from "../../../lib/codimac-api"
+import { HistoryPageComponent } from "../dispatcher/history-page.component"
 
 interface RouteParameters {
   warehouse_latitude: string | number
@@ -18,7 +19,7 @@ interface RouteParameters {
 @Component({
   selector: "codimac-admin",
   standalone: true,
-  imports: [DatePipe, FormsModule, IconComponent, StatusBadgeComponent],
+  imports: [DatePipe, FormsModule, HistoryPageComponent, IconComponent, StatusBadgeComponent],
   templateUrl: "./admin-feature.component.html",
 })
 export class AdminFeatureComponent {

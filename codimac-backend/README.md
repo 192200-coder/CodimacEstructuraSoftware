@@ -59,8 +59,13 @@ Todas las rutas (excepto salud, login y seguimiento público) usan
 - `GET /api/admin/audit` lists immutable audit events (administrator only), with
   date, user, entity, action, and pagination filters
 - `POST /api/inventory/:productId/movements`
+- `GET /api/inventory/:productId/movements` lists the product's chronological
+  inventory movements (dispatcher or administrator)
 - `POST /api/routes` creates a route; when `driverId` and `vehicleId` are
   included, route creation and resource assignment are committed atomically
+- `GET /api/routes/history` lists only closed operational routes for dispatchers
+  and administrators; it reads routes, stops, drivers, and vehicles, never
+  audit events or legacy generic messages
 - `POST /api/routes/:id/assign|start`
 - `DELETE /api/routes/:id` retires an unassigned approved route and releases its orders
 - `POST /api/admin/demo-data` idempotently adds missing demo fixtures (administrator only)
@@ -86,6 +91,12 @@ when a new client lies outside the radius.
 Las escrituras de estado, stock, asignación, entrega e incidencia se ejecutan
 en transacciones PostgreSQL. La autorización de rol se valida en el servidor;
 no se confía en el rol o usuario enviado por el navegador.
+
+La migración `006_inventory_movement_contract.sql` conserva
+los movimientos existentes, normaliza sus tipos a `ENTRADA`, `AJUSTE`,
+`RESERVA`, `LIBERACION` y `SALIDA`, y añade el vínculo opcional al pedido.
+Entradas, ajustes, reservas, liberaciones y salidas quedan dentro de la misma
+transacción que modifica el stock o completa la operación correspondiente.
 
 Los eventos de auditoría se registran desde los casos de uso y se escriben en la
 misma transacción que la operación correspondiente. La migración

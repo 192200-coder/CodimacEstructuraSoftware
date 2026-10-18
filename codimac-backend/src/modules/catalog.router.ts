@@ -132,6 +132,11 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
     res.json({ totalStock })
   })
 
+  router.get("/inventory/:productId/movements", requireRole("Despachador", "Administrador"), async (req, res) => {
+    const productId = uuidSchema.parse(req.params.productId)
+    res.json({ movements: await useCases.listInventoryMovements(productId) })
+  })
+
   router.get("/indicators", requireRole("Administrador"), async (_req, res) => {
     res.json({ indicators: await useCases.listIndicators() })
   })

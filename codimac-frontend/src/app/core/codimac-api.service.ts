@@ -12,6 +12,8 @@ import {
   getDriverRoute,
   getDriverRouteSummary,
   getRoutes,
+  getClosedRouteHistory,
+  getInventoryMovements,
   getCatalog,
   getAdminEvents,
   getAdminAuditEvents,
@@ -33,6 +35,8 @@ import {
   type RemoteOrder,
   type RemoteRoute,
   type RemoteRouteSummary,
+  type RemoteClosedRoute,
+  type RemoteInventoryMovement,
   type RemoteNotification,
   type PublicTracking,
 } from "../../lib/codimac-api"
@@ -143,6 +147,14 @@ export class CodimacApiService {
 
   getRoutes(): Promise<RemoteRouteSummary[]> {
     return getRoutes()
+  }
+
+  getClosedRouteHistory(): Promise<RemoteClosedRoute[]> {
+    return getClosedRouteHistory()
+  }
+
+  getInventoryMovements(productId: string): Promise<RemoteInventoryMovement[]> {
+    return getInventoryMovements(productId)
   }
 
   createRoute(input: Parameters<typeof createRoute>[0]): ReturnType<typeof createRoute> {

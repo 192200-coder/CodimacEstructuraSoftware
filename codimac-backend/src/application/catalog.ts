@@ -89,6 +89,7 @@ export interface CatalogRepository {
   listIndicators(): Promise<unknown[]>
   listAudit(query: AuditQuery): Promise<{ events: unknown[]; total: number }>
   listLegacyEvents(limit: number): Promise<unknown[]>
+  listInventoryMovements(productId: string): Promise<unknown[]>
 }
 
 export interface PasswordHasher {
@@ -123,6 +124,7 @@ export interface CatalogUseCases {
   listIndicators(): Promise<unknown[]>
   listAudit(query: AuditQuery): Promise<{ events: unknown[]; total: number }>
   listLegacyEvents(limit: number): Promise<unknown[]>
+  listInventoryMovements(productId: string): Promise<unknown[]>
 }
 
 export type InventoryMovementInput =
@@ -356,5 +358,6 @@ export function createCatalogUseCases(
     listIndicators: () => repository.listIndicators(),
     listAudit: (query) => repository.listAudit(query),
     listLegacyEvents: (limit) => repository.listLegacyEvents(limit),
+    listInventoryMovements: (productId) => repository.listInventoryMovements(productId),
   }
 }

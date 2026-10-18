@@ -51,10 +51,7 @@
     </div>
   </section>
 } @else if (state.active() === "Historial") {
-  <section class="card module-card">
-    <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar" [placeholder]="'Buscar en ' + state.active().toLowerCase()" /></div><button class="button primary" type="button" (click)="openCreateDialog()">{{ state.active() === "Auditoría" ? "Exportar" : "Filtrar" }}</button></div>
-    <div class="table-wrap"><table><thead><tr>@for (header of tableData['Auditoría'].headers; track header) {<th>{{ header }}</th>}</tr></thead><tbody>@for (row of tableData['Auditoría'].rows; track row[0]) {<tr>@for (cell of row; track $index) {<td>{{ cell }}</td>}</tr>} @empty {<tr><td colspan="4">No hay movimientos registrados.</td></tr>}</tbody></table></div>
-  </section>
+  <codimac-history-page />
 } @else {
   <section class="card module-card">
     <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar" [placeholder]="'Buscar en ' + state.active().toLowerCase()" /></div><button class="button primary" type="button" (click)="openCreateDialog()">Nuevo {{ state.active().slice(0, -1).toLowerCase() }}</button></div>

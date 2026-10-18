@@ -43,6 +43,7 @@ function createRepository(tx: CatalogTransaction): CatalogRepository {
     listIndicators: vi.fn(async () => []),
     listAudit: vi.fn(async () => ({ events: [], total: 0 })),
     listLegacyEvents: vi.fn(async () => []),
+    listInventoryMovements: vi.fn(async () => []),
   }
 }
 
@@ -97,6 +98,11 @@ describe("casos de uso de catálogos", () => {
     expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
       accion: "Entrada de inventario",
       entidad: "Inventario",
+    }))
+    expect(tx.insertInventoryMovement).toHaveBeenCalledWith(expect.objectContaining({
+      movementType: "Entrada",
+      quantity: 15,
+      actorId: "admin-1",
     }))
   })
 

@@ -131,6 +131,12 @@ export interface RouteTransaction {
     orderId: string
     actorId: string
   }): Promise<void>
+  releaseFailedDeliveryReservation(input: {
+    productId: string
+    quantity: number
+    orderId: string
+    actorId: string
+  }): Promise<void>
 
   lockStopForIncident(stopId: string): Promise<StopForDelivery | null>
   insertIncident(stopId: string, cause: string, notes: string | null, actorId: string): Promise<void>
@@ -150,6 +156,7 @@ export interface RouteTransaction {
 
 export interface RouteReadRepository {
   listRoutes(): Promise<unknown[]>
+  listClosedHistory(): Promise<unknown[]>
   getDriverRoute(driverId: string): Promise<unknown | null>
   getClosedRouteSummary(routeId: string, driverId: string): Promise<unknown | null>
 }
@@ -171,6 +178,7 @@ export interface RouteUseCases {
     actorId: string,
   ): Promise<"No entregada" | "Reprogramada">
   list(): Promise<unknown[]>
+  closedHistory(): Promise<unknown[]>
   driverRoute(driverId: string): Promise<unknown | null>
   routeSummary(routeId: string, driverId: string): Promise<unknown | null>
 }
@@ -527,6 +535,34 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
         if (incident.status === "No entregada") {
           await tx.closeOpenIncidents(stopId)
           await tx.updateOrderStatus(stop.orderId, "Listo", null)
+          const stockItems = await tx.lockDeliveryStock(stop.orderId)
+          for (const item of stockItems) {
+            if (item.reserved === null || item.reserved < item.quantity) {
+              throw new ApplicationError("CONFLICT", "No hay reserva de stock activa para liberar")
+            }
+            await tx.releaseFailedDeliveryReservation({
+              productId: item.productId,
+              quantity: item.quantity,
+              orderId: stop.orderId,
+              actorId,
+            })
+            await registrarEventoAuditoria(tx.audit, {
+              usuarioId: actorId,
+              accion: "Liberación de reserva por entrega fallida",
+              entidad: "Inventario",
+              entidadId: item.productId,
+              valorAnterior: {
+                existencias: item.totalStock,
+                reservadas: item.reservedStock,
+                pedidoId: stop.orderId,
+                cantidad: item.quantity,
+              },
+              valorNuevo: {
+                existencias: item.totalStock,
+                reservadas: item.reservedStock - item.quantity,
+              },
+            })
+          }
           await tx.insertStatusEvent({
             entityType: "Pedido",
             entityId: stop.orderId,
@@ -600,6 +636,7 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
       })
     },
     list: () => repository.listRoutes(),
+    closedHistory: () => repository.listClosedHistory(),
     driverRoute: (driverId) => repository.getDriverRoute(driverId),
     async routeSummary(routeId, driverId) {
       const summary = await repository.getClosedRouteSummary(routeId, driverId)

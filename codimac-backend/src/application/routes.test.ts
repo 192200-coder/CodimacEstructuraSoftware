@@ -46,6 +46,7 @@ function createTransaction(): RouteTransaction {
     applyDeliveryStock: vi.fn(async () => ({ totalStock: 0, reservedStock: 0 })),
     releaseStockReservation: vi.fn(async () => undefined),
     insertDeliveryMovement: vi.fn(async () => undefined),
+    releaseFailedDeliveryReservation: vi.fn(async () => undefined),
     lockStopForIncident: vi.fn(async () => null),
     insertIncident: vi.fn(async () => undefined),
     updateStopIncident: vi.fn(async () => undefined),
@@ -62,6 +63,7 @@ function createRepository(tx: RouteTransaction): RouteRepository {
   return {
     transaction: vi.fn(async (operation) => operation(tx)),
     listRoutes: vi.fn(async () => []),
+    listClosedHistory: vi.fn(async () => []),
     getDriverRoute: vi.fn(async () => null),
     getClosedRouteSummary: vi.fn(async () => null),
   }
@@ -111,5 +113,70 @@ describe("casos de uso de reparto", () => {
     })).rejects.toThrow("Todos los pedidos deben estar Listo")
 
     expect(tx.insertRoute).not.toHaveBeenCalled()
+  })
+
+  it("registra la salida de inventario al confirmar una entrega", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockStopForDelivery).mockResolvedValue({
+      id: "stop-1",
+      routeId: "route-1",
+      orderId: "order-1",
+      driverId: "driver-1",
+      routeStatus: "En ruta",
+      status: "En camino",
+      attempts: 0,
+      latitude: -13.5,
+      longitude: -71.9,
+    })
+    vi.mocked(tx.lockDeliveryStock).mockResolvedValue([{
+      productId: "product-1",
+      quantity: 3,
+      reserved: 3,
+      totalStock: 10,
+      reservedStock: 3,
+    }])
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await useCases.deliver("stop-1", "María", "driver-1")
+
+    expect(tx.insertDeliveryMovement).toHaveBeenCalledWith({
+      productId: "product-1",
+      quantity: -3,
+      orderId: "order-1",
+      actorId: "driver-1",
+    })
+  })
+
+  it("libera reservas y registra LIBERACION al agotar intentos de entrega", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockStopForIncident).mockResolvedValue({
+      id: "stop-1",
+      routeId: "route-1",
+      orderId: "order-1",
+      driverId: "driver-1",
+      routeStatus: "En ruta",
+      status: "En camino",
+      attempts: 1,
+      latitude: -13.5,
+      longitude: -71.9,
+    })
+    vi.mocked(tx.lockDeliveryStock).mockResolvedValue([{
+      productId: "product-1",
+      quantity: 3,
+      reserved: 3,
+      totalStock: 10,
+      reservedStock: 3,
+    }])
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await expect(useCases.reportIncident("stop-1", "Cliente ausente", null, "driver-1"))
+      .resolves.toBe("No entregada")
+
+    expect(tx.releaseFailedDeliveryReservation).toHaveBeenCalledWith({
+      productId: "product-1",
+      quantity: 3,
+      orderId: "order-1",
+      actorId: "driver-1",
+    })
   })
 })

@@ -373,8 +373,39 @@ class PostgresRouteTransaction implements RouteTransaction {
     actorId: string
   }): Promise<void> {
     await this.client.query(
-      "INSERT INTO inventory_movements(product_id,movement_type,quantity,reason,actor_id) VALUES($1,'Ajuste',$2,$3,$4)",
-      [input.productId, input.quantity, `Despacho entregado del pedido ${input.orderId}`, input.actorId],
+      "INSERT INTO inventory_movements(producto_id,tipo,cantidad,motivo,usuario_id,pedido_id) VALUES($1,'SALIDA',$2,$3,$4,$5)",
+      [input.productId, input.quantity, `Entrega del pedido ${input.orderId}`, input.actorId, input.orderId],
+    )
+  }
+
+  async releaseFailedDeliveryReservation(input: {
+    productId: string
+    quantity: number
+    orderId: string
+    actorId: string
+  }): Promise<void> {
+    const updated = await this.client.query(
+      `UPDATE products SET reserved_stock=reserved_stock-$2,updated_at=now()
+       WHERE id=$1 AND reserved_stock >= $2 RETURNING id`,
+      [input.productId, input.quantity],
+    )
+    if (!updated.rowCount) throw new Error("No se pudo liberar la reserva de inventario")
+    const released = await this.client.query(
+      `UPDATE stock_reservations SET released_at=now()
+       WHERE order_id=$1 AND product_id=$2 AND released_at IS NULL RETURNING id`,
+      [input.orderId, input.productId],
+    )
+    if (!released.rowCount) throw new Error("No se encontró la reserva activa del pedido")
+    await this.client.query(
+      `INSERT INTO inventory_movements(producto_id,tipo,cantidad,motivo,usuario_id,pedido_id)
+       VALUES($1,'LIBERACION',$2,$3,$4,$5)`,
+      [
+        input.productId,
+        input.quantity,
+        `Liberación por entrega fallida del pedido ${input.orderId}`,
+        input.actorId,
+        input.orderId,
+      ],
     )
   }
 
@@ -516,6 +547,41 @@ export class PostgresRouteRepository implements RouteRepository {
        LEFT JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN route_stops s ON s.route_id=r.id
        LEFT JOIN orders o ON o.id=s.order_id LEFT JOIN clients c ON c.id=o.client_id
        GROUP BY r.id,p.display_name,v.plate ORDER BY r.created_at DESC`,
+    )
+    return result.rows
+  }
+
+  async listClosedHistory(): Promise<unknown[]> {
+    const result = await pool.query(
+      `SELECT r.id,r.codigo AS code,r.status,r.created_at,r.started_at,r.closed_at,
+         r.distance_km,r.estimated_minutes,r.estimated_liters,r.estimated_cost,
+         p.display_name AS driver_name,v.plate AS vehicle_plate,
+         count(s.id)::int AS stop_count,
+         count(s.id) FILTER (WHERE s.status='Entregada')::int AS delivered,
+         count(s.id) FILTER (WHERE s.status='No entregada')::int AS not_delivered,
+         CASE
+           WHEN count(s.id)=0 THEN 'Sin paradas'
+           WHEN count(s.id) FILTER (WHERE s.status='No entregada') > 0 THEN 'Con incidencias'
+           ELSE 'Completado'
+         END AS result,
+         COALESCE(jsonb_agg(jsonb_build_object(
+           'id',s.id,'sequence_number',s.sequence_number,'status',s.status,
+           'attempts',s.attempts,'delivered_at',s.delivered_at,'received_by',s.received_by,
+           'code',o.codigo,'client_name',c.name,'address',c.address
+         ) ORDER BY s.sequence_number) FILTER (WHERE s.id IS NOT NULL),'[]'::jsonb) AS route_stops,
+         CASE WHEN r.started_at IS NOT NULL AND r.closed_at IS NOT NULL
+           THEN round((extract(epoch FROM (r.closed_at-r.started_at))/60)::numeric,1)
+           ELSE NULL
+         END AS duration_minutes
+       FROM routes r
+       LEFT JOIN profiles p ON p.id=r.driver_id
+       LEFT JOIN vehicles v ON v.id=r.vehicle_id
+       LEFT JOIN route_stops s ON s.route_id=r.id
+       LEFT JOIN orders o ON o.id=s.order_id
+       LEFT JOIN clients c ON c.id=o.client_id
+       WHERE r.status='Cerrada'
+       GROUP BY r.id,p.display_name,v.plate
+       ORDER BY r.closed_at DESC,r.id DESC`,
     )
     return result.rows
   }
