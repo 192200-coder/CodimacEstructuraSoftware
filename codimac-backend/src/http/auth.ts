@@ -1,13 +1,9 @@
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
-import { randomUUID } from "node:crypto"
 import type { NextFunction, Request, Response } from "express"
-import { z } from "zod"
 import { config } from "../config.js"
 import { pool } from "../db/pool.js"
 import { HttpError } from "./errors.js"
-import { registrarEventoAuditoria } from "../application/registro-auditoria.js"
-import { PostgresRegistroAuditoria } from "../adapters/postgres-registro-auditoria.js"
 
 export type Role = "Despachador" | "Chofer" | "Administrador"
 export interface AuthUser {
@@ -24,54 +20,6 @@ declare global {
       authSessionId?: string
     }
   }
-}
-
-const loginSchema = z.object({
-  email: z.email().transform((email) => email.toLowerCase()),
-  password: z.string().min(1).max(256),
-})
-
-export async function login(emailInput: unknown, passwordInput: unknown) {
-  const { email, password } = loginSchema.parse({ email: emailInput, password: passwordInput })
-  const result = await pool.query(
-    `SELECT id, email, display_name, role, password_hash, active
-     FROM profiles WHERE email = $1`,
-    [email],
-  )
-  const profile = result.rows[0] as (AuthUser & { password_hash: string; active: boolean }) | undefined
-  if (!profile || !profile.active || !(await bcrypt.compare(password, profile.password_hash))) {
-    await registrarEventoAuditoria(
-      new PostgresRegistroAuditoria(async (text, values) => {
-        await pool.query(text, values)
-      }),
-      {
-        usuarioId: profile?.id ?? null,
-        accion: "Inicio de sesión fallido",
-        entidad: "Autenticación",
-        entidadId: profile?.id ?? null,
-        valorAnterior: null,
-        valorNuevo: {
-          correoIngresado: email,
-          motivo: !profile ? "Cuenta no encontrada" : !profile.active ? "Cuenta inactiva" : "Credenciales incorrectas",
-        },
-      },
-    )
-    throw new HttpError(401, "Correo o contraseña incorrectos")
-  }
-  const user: AuthUser = {
-    id: profile.id,
-    email: profile.email,
-    display_name: profile.display_name,
-    role: profile.role,
-  }
-  const authSessionId = randomUUID()
-  await pool.query(
-    "INSERT INTO auth_sessions(id,user_id,expires_at) VALUES($1,$2,now()+interval '8 hours')",
-    [authSessionId, user.id],
-  )
-  await pool.query("DELETE FROM auth_sessions WHERE expires_at<now() OR revoked_at<now()-interval '30 days'")
-  const token = jwt.sign({ sub: user.id, jti: authSessionId }, config.JWT_SECRET, { expiresIn: "8h" })
-  return { token, user }
 }
 
 export async function authenticate(req: Request, _res: Response, next: NextFunction) {

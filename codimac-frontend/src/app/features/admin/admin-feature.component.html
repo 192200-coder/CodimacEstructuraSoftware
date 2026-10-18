@@ -39,7 +39,8 @@
           <td>{{ event.fecha_hora | date:"short":"America/Lima" }}</td>
           <td>{{ event.usuario ?? event.email ?? "Intento anónimo" }}</td>
           <td>{{ event.accion }}</td><td>{{ event.entidad }}</td><td>{{ event.entidad_id ?? "—" }}</td>
-          <td>{{ formatAuditValue(event.valor_anterior) }}</td><td>{{ formatAuditValue(event.valor_nuevo) }}</td>
+          <td><details class="audit-value"><summary>Ver valor</summary><pre>{{ formatAuditValue(event.valor_anterior) }}</pre></details></td>
+          <td><details class="audit-value"><summary>Ver valor</summary><pre>{{ formatAuditValue(event.valor_nuevo) }}</pre></details></td>
         </tr>
       } @empty { <tr><td colspan="7">No hay eventos de auditoría para estos filtros.</td></tr> }
     </tbody></table></div>

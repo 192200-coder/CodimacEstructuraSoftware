@@ -92,6 +92,14 @@ const transactionClient = {
         active_route_id: order.activeRouteId,
       }] : [])
     }
+    if (sql.includes("SELECT status FROM routes WHERE id=$1 FOR UPDATE")) {
+      const route = routes.get(values[0] as string)
+      return queryResult(route ? [{ status: route.status, vehicle_id: route.vehicleId }] : [])
+    }
+    if (sql.includes("SELECT status,vehicle_id FROM routes WHERE id=$1 FOR UPDATE")) {
+      const route = routes.get(values[0] as string)
+      return queryResult(route ? [{ status: route.status, vehicle_id: route.vehicleId }] : [])
+    }
     if (sql.includes("SELECT status,driver_id,vehicle_id FROM routes WHERE id=$1 FOR UPDATE")) {
       const route = routes.get(values[0] as string)
       return queryResult(route ? [{
@@ -169,7 +177,7 @@ const transactionClient = {
       reservations.set(values[0] as string, { quantity: Number(values[2]), released: false })
       return queryResult()
     }
-    if (sql.includes("FROM stock_reservations WHERE order_id=$1 AND released_at IS NULL")) {
+    if (sql.includes("FROM stock_reservations") && sql.includes("released_at IS NULL")) {
       const orderId = values[0] as string
       const reservation = reservations.get(orderId)
       return queryResult(reservation && !reservation.released
@@ -204,34 +212,26 @@ const transactionClient = {
       return queryResult()
     }
     if (sql.includes("INSERT INTO status_events")) {
-      if (sql.includes("'Cancelado'")) {
+      if (values[2] === "Cancelado") {
         statusEvents.push({
           previous: values[1] as string,
-          next: "Cancelado",
-          actorId: values[2] as string,
+          next: values[2] as string,
+          actorId: values[3] as string,
         })
-      } else if (sql.includes("'Listo'")) {
-        statusEvents.push({ previous: "En preparación", next: "Listo", actorId: values[1] as string })
-      } else if (sql.includes("'En preparación'")) {
-        statusEvents.push({ previous: "Pendiente", next: "En preparación", actorId: values[1] as string })
+      } else {
+        statusEvents.push({
+          previous: values[1] as string,
+          next: values[2] as string,
+          actorId: values[3] as string,
+        })
       }
       return queryResult()
     }
-    if (sql.includes("UPDATE orders SET status='En preparación'")) {
-      const order = orders.get(values[0] as string)
-      if (order) order.status = "En preparación"
-      return queryResult()
-    }
-    if (sql.includes("UPDATE orders SET status='Listo'")) {
-      const order = orders.get(values[0] as string)
-      if (order) order.status = "Listo"
-      return queryResult()
-    }
-    if (sql.includes("UPDATE orders SET status='Cancelado'")) {
+    if (sql.includes("UPDATE orders SET status=$2")) {
       const order = orders.get(values[0] as string)
       if (order) {
-        order.status = "Cancelado"
-        order.activeRouteId = null
+        order.status = values[1] as string
+        if (sql.includes("active_route_id=NULL")) order.activeRouteId = null
       }
       return queryResult()
     }

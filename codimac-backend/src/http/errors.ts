@@ -43,7 +43,11 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
       ? 404
       : error.code === "CONFLICT"
         ? 409
-        : 400
+        : error.code === "UNAUTHENTICATED"
+          ? 401
+          : error.fields.some((field) => field.code === "STOCK_INSUFICIENTE")
+            ? 422
+            : 400
     res.status(status).json({
       error: {
         code: error.code,

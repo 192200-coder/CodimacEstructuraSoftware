@@ -470,6 +470,9 @@ td strong { color: #334256; font-weight: 600; }
 .driver-client-phone a { width: fit-content; color: #2e5c8a; font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
 .driver-map-preview { width: 100%; height: 150px; margin-top: 10px; pointer-events: none; border: 1px solid #dce4e9; border-radius: 8px; }
 .driver-map-unavailable { padding: 12px; color: #7c8998; background: #f5f7f8; border-radius: 8px; font-size: 10px; }
+.audit-value { min-width: 86px; }
+.audit-value summary { color: #315b82; cursor: pointer; font-size: 11px; font-weight: 700; }
+.audit-value pre { max-width: 360px; max-height: 240px; margin: 8px 0; padding: 8px; overflow: auto; color: #34465b; background: #f5f7f9; border-radius: 5px; font-size: 10px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .mobile-contact { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 9px; }
 .mobile-contact a, .mobile-contact button { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 7px; color: #315b82; background: #fff; border: 1px solid #d5e0e8; border-radius: 7px; font-size: 9px; font-weight: 700; text-decoration: none; }
 .mobile-contact button:disabled { color: #9aa4af; background: #f4f6f7; }

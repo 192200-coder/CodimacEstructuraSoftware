@@ -6,7 +6,8 @@ const mocks = vi.hoisted(() => ({ query: vi.fn() }))
 
 vi.mock("./db/pool.js", () => ({
   pool: { query: mocks.query },
-  inTransaction: vi.fn(),
+  inTransaction: vi.fn(async (operation: (client: { query: typeof mocks.query }) => Promise<unknown>) =>
+    operation({ query: mocks.query })),
 }))
 
 process.env.DATABASE_URL = "postgresql://codimac:test@localhost/codimac"

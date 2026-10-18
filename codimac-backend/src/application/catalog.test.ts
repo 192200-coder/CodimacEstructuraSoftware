@@ -94,6 +94,76 @@ describe("casos de uso de catálogos", () => {
       observation: null,
       detail: null,
     }))
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Entrada de inventario",
+      entidad: "Inventario",
+    }))
+  })
+
+  it("audita altas, ediciones y desactivaciones de usuario desde la aplicación", async () => {
+    const tx = createTransaction()
+    const repository = createRepository(tx)
+    const useCases = createCatalogUseCases(
+      repository,
+      { hash: vi.fn(async () => "hashed") },
+    )
+    vi.mocked(tx.lockUser).mockResolvedValue({
+      email: "admin@codimac.pe",
+      display_name: "Admin",
+      role: "Administrador",
+      active: true,
+    })
+
+    await useCases.createUser({
+      email: "new@codimac.pe",
+      password: "long-password",
+      name: "Nuevo",
+      role: "Despachador",
+      actorId: "admin-1",
+    })
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Alta de usuario",
+      entidad: "Usuario",
+    }))
+
+    await useCases.updateUser({
+      userId: "user-1",
+      actorId: "admin-1",
+      actorRole: "Administrador",
+      active: false,
+    })
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Desactivación de usuario",
+      entidad: "Usuario",
+    }))
+  })
+
+  it("audita los cambios de parámetros globales en la transacción", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.saveParameters).mockResolvedValue({
+      warehouse_latitude: -13.6,
+      warehouse_longitude: -72.8,
+      fuel_price: 6.2,
+      minutes_per_stop: 8,
+      service_radius_km: 50,
+    })
+    const useCases = createCatalogUseCases(
+      createRepository(tx),
+      { hash: vi.fn(async () => "hashed") },
+    )
+
+    await useCases.updateParameters({
+      warehouseLatitude: -13.6,
+      warehouseLongitude: -72.8,
+      fuelPrice: 6.2,
+      minutesPerStop: 8,
+      serviceRadiusKm: 50,
+    }, "admin-1")
+
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Creación de parámetros",
+      entidad: "Parámetros",
+    }))
   })
 
   it("no persiste el ajuste si la disminución deja stock bajo las reservas", async () => {

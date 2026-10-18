@@ -56,6 +56,8 @@ Todas las rutas (excepto salud, login y seguimiento público) usan
 - `GET /api/resources`, `GET /api/catalog/:resource`
 - `POST/PUT /api/admin/catalog/:resource[/:id]`
 - `PUT /api/admin/parameters`, `GET/POST/PUT /api/admin/users`
+- `GET /api/admin/audit` lists immutable audit events (administrator only), with
+  date, user, entity, action, and pagination filters
 - `POST /api/inventory/:productId/movements`
 - `POST /api/routes` creates a route; when `driverId` and `vehicleId` are
   included, route creation and resource assignment are committed atomically
@@ -84,6 +86,15 @@ when a new client lies outside the radius.
 Las escrituras de estado, stock, asignación, entrega e incidencia se ejecutan
 en transacciones PostgreSQL. La autorización de rol se valida en el servidor;
 no se confía en el rol o usuario enviado por el navegador.
+
+Los eventos de auditoría se registran desde los casos de uso y se escriben en la
+misma transacción que la operación correspondiente. La migración
+`003_immutable_audit.sql` protege `auditoria_eventos` contra `UPDATE` y `DELETE`
+mediante un trigger. El endpoint `GET /api/admin/audit` es de solo lectura,
+exclusivo para Administrador y admite filtros de fecha, usuario, entidad y
+acción, además de paginación. Para ejecutar la prueba con PostgreSQL, configura
+`AUDIT_TEST_DATABASE_URL` con una base de pruebas aislada; la prueba crea y
+revierte un esquema temporal.
 
 Las notificaciones de la interfaz son internas: el navegador consulta
 `GET /api/notifications` cada 30 segundos y conserva localmente, por usuario,

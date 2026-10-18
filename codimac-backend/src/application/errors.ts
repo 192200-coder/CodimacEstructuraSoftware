@@ -1,4 +1,8 @@
-export type ApplicationErrorCode = "NOT_FOUND" | "CONFLICT" | "VALIDATION_ERROR"
+export type ApplicationErrorCode =
+  | "NOT_FOUND"
+  | "CONFLICT"
+  | "VALIDATION_ERROR"
+  | "UNAUTHENTICATED"
 
 export interface ApplicationErrorField {
   field: string
