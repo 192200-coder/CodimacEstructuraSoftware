@@ -29,6 +29,7 @@ export class ClientFeatureComponent {
   readonly loading = signal(false)
   readonly error = signal("")
   readonly code = signal("")
+  readonly lastFourDigits = signal("")
   readonly trackingCode = signal("")
   readonly tracking = signal<PublicTracking | null>(null)
 
@@ -94,20 +95,22 @@ export class ClientFeatureComponent {
     this.error.set("")
   }
 
+  updateLastFourDigits(event: Event): void {
+    this.lastFourDigits.set((event.target as HTMLInputElement).value.replace(/\D/g, "").slice(0, 4))
+    this.error.set("")
+  }
+
   async consult(): Promise<void> {
     const code = this.code().trim()
-    if (!code) {
-      this.error.set("Ingresa el código privado de seguimiento que recibiste al registrar el pedido.")
-      return
-    }
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(code)) {
-      this.error.set("Ese formato no corresponde al código privado. No uses el código visible del pedido (por ejemplo, COD-101); solicita o pega el UUID de seguimiento.")
+    const lastFourDigits = this.lastFourDigits()
+    if (!code || !/^\d{4}$/.test(lastFourDigits)) {
+      this.error.set("Ingresa el código del pedido y los últimos cuatro dígitos del teléfono del cliente.")
       return
     }
     this.loading.set(true)
     this.error.set("")
     try {
-      const result = await this.api.getTracking(code)
+      const result = await this.api.getTracking(code, lastFourDigits)
       this.trackingCode.set(result.tracking.code)
       this.tracking.set(result.tracking)
       this.reprogrammed.set(result.tracking.public_status === "Reprogramado")
@@ -127,6 +130,7 @@ export class ClientFeatureComponent {
     this.error.set("")
     this.tracking.set(null)
     this.trackingCode.set("")
+    this.lastFourDigits.set("")
     this.reprogrammed.set(false)
     this.deliveryFailed.set(false)
   }

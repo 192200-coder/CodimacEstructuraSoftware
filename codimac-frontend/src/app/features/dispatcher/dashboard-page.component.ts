@@ -60,19 +60,6 @@ export class DashboardPageComponent {
     }).format(new Date(value))
   }
 
-  async copyTrackingToken(token: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(token)
-      this.state.showToast("Código privado de seguimiento copiado.")
-    } catch (error) {
-      this.state.showToast(
-        error instanceof Error
-          ? "No se pudo copiar el código de seguimiento. Selecciónalo y cópialo manualmente."
-          : "No se pudo copiar el código de seguimiento.",
-      )
-    }
-  }
-
   private async loadDashboard(): Promise<void> {
     this.loading.set(true)
     this.loadError.set("")

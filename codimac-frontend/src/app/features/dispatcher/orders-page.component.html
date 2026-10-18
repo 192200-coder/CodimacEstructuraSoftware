@@ -30,12 +30,6 @@
     @if (selectedRemote; as order) {
       <div class="card-header"><div><p class="section-kicker">DETALLE DE PEDIDO</p><h2 [class.cancelled-order-code]="order.status === 'Cancelado'">{{ order.code }}</h2></div><codimac-status [status]="order.status" /></div>
       <dl class="detail-list"><div><dt>Cliente</dt><dd>{{ order.clients?.name ?? "Cliente" }}</dd></div><div><dt>Entrega</dt><dd>{{ order.deadline_at ? (order.deadline_at | date:"short") : "Sin fecha límite" }}</dd></div><div><dt>Dirección</dt><dd>{{ order.clients?.address ?? "Sin dirección" }}</dd></div></dl>
-      <div class="tracking-token-detail">
-        <span>Código privado de seguimiento</span>
-        <code>{{ order.tracking_token }}</code>
-        <p>Compártelo con el cliente para consultar el estado. No uses el código visible del pedido.</p>
-        <button class="button secondary" type="button" (click)="copyTrackingToken(order.tracking_token)">Copiar código</button>
-      </div>
       <p class="field-label">PRODUCTOS</p>
       @for (item of order.order_items ?? []; track $index) {
         <div class="product-line"><div><strong>{{ item.products.name }}</strong><span>{{ item.products.unit }}</span></div><b>{{ item.quantity }}</b></div>

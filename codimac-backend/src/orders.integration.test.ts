@@ -71,7 +71,6 @@ const transactionClient = {
         code: values[0] as string,
         status: "Pendiente",
         deadline_at: values[2] as string | null,
-        tracking_token: "40000000-0000-4000-8000-000000000001",
       }])
     }
     if (sql.includes("INSERT INTO order_items")) {

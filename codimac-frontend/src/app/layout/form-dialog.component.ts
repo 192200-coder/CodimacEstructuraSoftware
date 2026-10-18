@@ -223,10 +223,7 @@ export class FormDialogComponent implements OnInit {
             })),
           })
           this.close()
-          this.state.showToast(
-            `Pedido ${result.order.code} creado. Código privado de seguimiento: ${result.order.tracking_token}`,
-            20_000,
-          )
+          this.state.showToast(`Pedido ${result.order.code} creado. El cliente puede consultar con el código del pedido y los últimos cuatro dígitos de su teléfono.`)
           break
           }
         case "client":

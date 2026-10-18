@@ -175,7 +175,7 @@ export class CodimacApiService {
     return reportStopIncident(id, cause, notes)
   }
 
-  getTracking(token: string): Promise<{ tracking: PublicTracking }> {
-    return getTracking(token)
+  getTracking(codigo: string, ultimos4: string): Promise<{ tracking: PublicTracking }> {
+    return getTracking(codigo, ultimos4)
   }
 }

@@ -51,28 +51,18 @@ describe("API CODIMAC", () => {
     expect(response.headers.get("access-control-allow-origin")).toBe("http://localhost:8443")
   })
 
-  it("explica cuando el código de trazabilidad no tiene formato UUID", async () => {
-    const response = await fetch(`${baseUrl}/api/tracking/COD-101`)
-    expect(response.status).toBe(400)
-    expect(await response.json()).toMatchObject({
-      error: {
-        code: "VALIDATION_ERROR",
-        message: "El código privado de seguimiento tiene un formato inválido",
-        fields: [],
-      },
-    })
-  })
-
-  it("devuelve un mensaje específico si el código privado no pertenece a un pedido", async () => {
+  it("responde con error genérico si no encuentra el pedido con las credenciales indicadas", async () => {
     query.mockResolvedValueOnce({ rows: [], rowCount: 0 } as never)
-    const response = await fetch(
-      `${baseUrl}/api/tracking/50000000-0000-4000-8000-000000000001`,
-    )
+    const response = await fetch(`${baseUrl}/api/tracking`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ codigo: "PED-0001", ultimos4: "1234" }),
+    })
     expect(response.status).toBe(404)
     expect(await response.json()).toMatchObject({
       error: {
         code: "NOT_FOUND",
-        message: "No encontramos un pedido asociado a ese código privado",
+        message: "No encontramos un pedido con esos datos.",
         fields: [],
       },
     })

@@ -25,7 +25,7 @@
       @if (recentOrders.length) {
         <div class="table-wrap dashboard-orders">
           <table>
-            <thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Fecha</th><th>Seguimiento privado</th></tr></thead>
+            <thead><tr><th>Pedido</th><th>Cliente</th><th>Estado</th><th>Fecha</th></tr></thead>
             <tbody>
               @for (order of recentOrders; track order.id) {
                 <tr [class.cancelled-order-row]="order.status === 'Cancelado'">
@@ -33,10 +33,6 @@
                   <td>{{ order.clients?.name ?? "Cliente" }}</td>
                   <td><codimac-status [status]="order.status" /></td>
                   <td>{{ formatDate(order.ordered_at) }}</td>
-                  <td class="tracking-token-cell">
-                    <code>{{ order.tracking_token }}</code>
-                    <button class="tracking-copy-button" type="button" [attr.aria-label]="'Copiar código privado de seguimiento de ' + order.code" (click)="copyTrackingToken(order.tracking_token); $event.stopPropagation()">Copiar</button>
-                  </td>
                 </tr>
               }
             </tbody>

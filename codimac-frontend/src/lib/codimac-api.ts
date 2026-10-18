@@ -170,7 +170,6 @@ export interface RemoteClient {
 export interface RemoteOrder {
   id: string
   code: string
-  tracking_token: string
   status: string
   ordered_at?: string
   deadline_at: string | null
@@ -268,8 +267,14 @@ export interface PublicTracking {
   stop_status: string | null
 }
 
-export async function getTracking(token: string): Promise<{ tracking: PublicTracking }> {
-  return request(`/tracking/${encodeURIComponent(token)}`, {}, false)
+export async function getTracking(
+  codigo: string,
+  ultimos4: string,
+): Promise<{ tracking: PublicTracking }> {
+  return request("/tracking", {
+    method: "POST",
+    body: JSON.stringify({ codigo, ultimos4 }),
+  }, false)
 }
 
 export async function getNotifications(): Promise<RemoteNotification[]> {
@@ -419,7 +424,7 @@ export async function createOrder(value: {
   clientId: string
   deadlineAt: string | null
   items: Array<{ productId: string; quantity: number }>
-}): Promise<{ order: { id: string; code: string; tracking_token: string; status: string } }> {
+}): Promise<{ order: { id: string; code: string; status: string } }> {
   return request("/orders", { method: "POST", body: JSON.stringify(value) })
 }
 

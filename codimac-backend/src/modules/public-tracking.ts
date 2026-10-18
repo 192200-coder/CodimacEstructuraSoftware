@@ -1,3 +1,10 @@
+import { z } from "zod"
+
+export const publicTrackingCredentialsSchema = z.object({
+  codigo: z.string().trim().min(1).max(80),
+  ultimos4: z.string().regex(/^\d{4}$/),
+}).strict()
+
 export type PublicTrackingStatus =
   | "Registrado"
   | "En preparación"

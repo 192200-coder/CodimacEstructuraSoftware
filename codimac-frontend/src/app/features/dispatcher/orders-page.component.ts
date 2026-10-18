@@ -150,12 +150,4 @@ export class OrdersPageComponent {
     this.dateFilter.set((event.target as HTMLSelectElement).value)
   }
 
-  async copyTrackingToken(token: string): Promise<void> {
-    try {
-      await navigator.clipboard.writeText(token)
-      this.state.showToast("Código privado de seguimiento copiado.")
-    } catch {
-      this.state.showToast("No se pudo copiar el código de seguimiento. Selecciónalo y cópialo manualmente.")
-    }
-  }
 }

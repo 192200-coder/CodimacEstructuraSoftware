@@ -7,6 +7,8 @@
   compatible con Neon.
 - `src/dominio/`: reglas de pedidos, inventario, entregas y optimización,
   independientes del framework y del proveedor de base de datos.
+- `codimac-backend/src/application/`: validaciones de casos de uso, incluida la
+  disponibilidad de stock al registrar y preparar pedidos.
 - `src/app/`: composición visual Angular por rol y área funcional.
 - `codimac-backend/src/modules/`: endpoints REST separados por área.
 - `codimac-backend/src/db/migrations/`: esquema relacional y restricciones.

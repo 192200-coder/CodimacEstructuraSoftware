@@ -61,15 +61,15 @@ Todas las rutas (excepto salud, login y seguimiento público) usan
 - `GET /api/driver/route`
 - `POST /api/stops/:id/deliver|incidents`
 - `GET /api/admin/events`, `GET /api/orders/:id/events`
-- `GET /api/indicators`, `GET /api/tracking/:token`
+- `GET /api/indicators`, `POST /api/tracking`
 
-Public tracking uses the private UUID returned when the order is created, not
-the visible order code. The authenticated dispatcher/admin orders list also
-returns this UUID so it can be retrieved from the dashboard's recent-orders
-table or the order detail panel and shared with the customer. Treat it as
-private: anyone with the UUID can view that order's public tracking status.
-After the configured delivery attempts are exhausted, tracking reports that
-the delivery could not be completed and omits the stale route ETA.
+Public tracking accepts `{ "codigo": "PED-0001", "ultimos4": "1234" }` in
+the request body. The order code and the last four digits of the client's
+registered contact number must match. Failed lookups return the same generic
+message and are limited to five attempts per IP every ten minutes. Successful
+responses contain only the queried order's status and, while it is in transit,
+its stop position, route stop count, and ETA; personal details and other
+orders' data are never returned.
 
 Las escrituras de estado, stock, asignación, entrega e incidencia se ejecutan
 en transacciones PostgreSQL. La autorización de rol se valida en el servidor;

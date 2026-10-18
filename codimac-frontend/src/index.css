@@ -108,14 +108,6 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .dashboard-orders th { padding: 11px 14px; font-size: 10px; }
 .dashboard-orders td { padding: 12px 14px; font-size: 12px; }
 .dashboard-orders td strong { color: #32445a; font-size: 12px; }
-.tracking-token-cell { min-width: 205px; }
-.tracking-token-cell code { display: block; max-width: 190px; overflow-wrap: anywhere; color: #4a5b70; font-size: 10px; }
-.tracking-copy-button { padding: 3px 0; border: 0; background: transparent; color: #286aa0; font-size: 10px; font-weight: 700; cursor: pointer; }
-.tracking-token-detail { display: grid; gap: 6px; padding: 12px; margin: 14px 0; border: 1px solid #dbe5ee; border-radius: 8px; background: #f6f9fc; }
-.tracking-token-detail > span { color: #657488; font-size: 10px; font-weight: 700; }
-.tracking-token-detail code { overflow-wrap: anywhere; color: #33475f; font-size: 11px; user-select: all; }
-.tracking-token-detail p { margin: 0; color: #738195; font-size: 10px; line-height: 1.45; }
-.tracking-token-detail .button { justify-self: start; }
 .dashboard-empty { margin: 8px 18px 18px; color: #748194; font-size: 13px; line-height: 1.5; }
 .delivery-card .card-link { padding: 14px 18px; margin: 0; font-size: 12px; }
 .pending-route-list { padding: 14px; margin-bottom: 22px; background: #fffaf0; border: 1px solid #edd8b1; border-radius: 8px; }

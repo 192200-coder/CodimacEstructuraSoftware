@@ -13,7 +13,7 @@ ordersRouter.use(authenticate)
 
 ordersRouter.get("/", requireRole("Despachador", "Administrador"), async (_req, res) => {
   const result = await pool.query(
-    `SELECT o.id,o.codigo AS code,o.tracking_token,o.status,o.ordered_at,o.deadline_at,o.active_route_id,
+    `SELECT o.id,o.codigo AS code,o.status,o.ordered_at,o.deadline_at,o.active_route_id,
        jsonb_build_object('name',c.name,'address',c.address,'latitude',c.latitude,'longitude',c.longitude) AS clients,
        COALESCE((SELECT jsonb_agg(jsonb_build_object(
          'quantity',oi.quantity,'products',jsonb_build_object('name',p.name,'unit',p.unit,'weight_kg',p.weight_kg)
@@ -60,7 +60,7 @@ ordersRouter.post("/", requireRole("Despachador"), async (req, res) => {
     const code = formatSequentialCode("PED", Number(sequence.rows[0].value))
     const inserted = await client.query(
       `INSERT INTO orders(codigo,client_id,deadline_at,created_by)
-       VALUES($1,$2,$3,$4) RETURNING id,codigo AS code,status,deadline_at,tracking_token`,
+       VALUES($1,$2,$3,$4) RETURNING id,codigo AS code,status,deadline_at`,
       [code, body.clientId, body.deadlineAt ?? null, req.user!.id],
     )
     for (const item of body.items) {
