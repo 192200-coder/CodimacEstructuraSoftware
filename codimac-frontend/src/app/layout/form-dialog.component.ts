@@ -4,9 +4,12 @@ import { AppStateService } from "../core/app-state.service"
 import { CodimacApiService } from "../core/codimac-api.service"
 import type { DialogKind } from "../core/models"
 import { IconComponent } from "../shared/icon.component"
+import { NumeroPipe } from "../shared/numero.pipe"
 import { MapLocationPickerComponent } from "../shared/map-location-picker.component"
 import { ApiRequestError, type InventoryAdjustmentReason } from "../../lib/codimac-api"
 import { advertenciaAreaServicio, validarDatosCliente } from "../../dominio/clientes"
+import { formatearKg } from "../../dominio/planificacion-ruta-ui"
+import { StatusBadgeComponent } from "../shared/status-badge.component"
 
 const titles: Record<DialogKind, string> = {
   order: "Nuevo pedido",
@@ -31,7 +34,7 @@ interface CatalogOption {
 @Component({
   selector: "codimac-form-dialog",
   standalone: true,
-  imports: [FormsModule, IconComponent, MapLocationPickerComponent],
+  imports: [FormsModule, IconComponent, MapLocationPickerComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./form-dialog.component.html",
 })
 export class FormDialogComponent implements OnInit {
@@ -42,6 +45,14 @@ export class FormDialogComponent implements OnInit {
   readonly orderFieldErrors = signal<Record<string, string>>({})
   readonly inventoryFieldErrors = signal<Record<string, string>>({})
   readonly clientErrors = signal<string[]>([])
+  readonly userFieldErrors = signal<Record<string, string>>({})
+  readonly resourcesLoading = signal(false)
+  readonly resourceRows = signal<Array<{
+    type: "Chofer" | "Vehículo"
+    name: string
+    detail: string
+    status: "Disponible" | "En ruta"
+  }>>([])
 
   name = ""
   contact = ""
@@ -62,6 +73,7 @@ export class FormDialogComponent implements OnInit {
   deadlineAt = ""
   email = ""
   role = "Despachador"
+  phone = ""
   password = ""
   unit = ""
   weightKg = 0
@@ -109,13 +121,80 @@ export class FormDialogComponent implements OnInit {
         this.inventoryProducts.set(products)
         this.productId = products[0]?.id ?? ""
       }
+      if (this.kind === "resources") {
+        this.resourcesLoading.set(true)
+        const [resources, routes] = await Promise.all([this.api.getResources(), this.api.getRoutes()])
+        const busy = routes.filter((route) => route.status === "Asignada" || route.status === "En curso")
+        this.resourceRows.set([
+          ...resources.drivers.map((driver) => ({
+            type: "Chofer" as const,
+            name: driver.display_name,
+            detail: driver.phone ?? "Celular no registrado",
+            status: "Disponible" as const,
+          })),
+          ...busy.filter((route) => route.driver_name).map((route) => ({
+            type: "Chofer" as const,
+            name: route.driver_name ?? "",
+            detail: `Reparto ${route.code}`,
+            status: "En ruta" as const,
+          })),
+          ...resources.vehicles.map((vehicle) => ({
+            type: "Vehículo" as const,
+            name: `${vehicle.vehicle_type} · ${vehicle.plate}`,
+            detail: `Capacidad ${formatearKg(vehicle.capacity_kg)} kg`,
+            status: "Disponible" as const,
+          })),
+          ...busy.filter((route) => route.vehicle_plate).map((route) => ({
+            type: "Vehículo" as const,
+            name: route.vehicle_plate ?? "",
+            detail: `Reparto ${route.code}`,
+            status: "En ruta" as const,
+          })),
+        ])
+      }
     } catch (error) {
       this.state.showToast(error instanceof Error ? error.message : "No se pudieron cargar los catálogos.")
+    } finally {
+      this.resourcesLoading.set(false)
     }
+  }
+
+  goToPlanning(): void {
+    this.close()
+    this.state.selectSection("Repartos")
   }
 
   get kind(): DialogKind {
     return this.state.dialog() ?? "order"
+  }
+
+  get selectedInventoryProduct(): CatalogOption | undefined {
+    return this.inventoryProducts().find((product) => product.id === this.productId)
+  }
+
+  get selectedInventoryAvailable(): number | null {
+    const product = this.selectedInventoryProduct
+    if (!product || product.total_stock === undefined || product.reserved_stock === undefined) return null
+    return Number(product.total_stock) - Number(product.reserved_stock)
+  }
+
+  get adjustmentPreview(): number | null {
+    const current = this.selectedInventoryProduct?.total_stock
+    if (current === undefined || !Number.isFinite(Number(this.quantity))) return null
+    const adjustment = Number(this.quantity) * (this.adjustmentDirection === "Aumentar" ? 1 : -1)
+    return Number(current) + adjustment
+  }
+
+  get adjustmentBelowReserved(): boolean {
+    const reserved = this.selectedInventoryProduct?.reserved_stock
+    return reserved !== undefined && this.adjustmentPreview !== null
+      ? this.adjustmentPreview < Number(reserved)
+      : false
+  }
+
+  setAdjustmentDirection(direction: "Aumentar" | "Disminuir"): void {
+    this.adjustmentDirection = direction
+    this.clearInventoryErrors()
   }
 
   get title(): string {
@@ -136,6 +215,29 @@ export class FormDialogComponent implements OnInit {
 
   productUnit(productId: string): string {
     return this.products().find((product) => product.id === productId)?.unit ?? ""
+  }
+
+  orderLineQuantity(item: { productId: string; quantity: number }): string {
+    const quantity = Number.isFinite(Number(item.quantity))
+      ? new Intl.NumberFormat("es-PE", { maximumFractionDigits: 3 }).format(Number(item.quantity))
+      : "0"
+    return `${quantity} ${this.productUnit(item.productId) || "unid."}`
+  }
+
+  get orderQuantitySummary(): string {
+    const totalsByUnit = new Map<string, number>()
+    for (const item of this.orderItems) {
+      const quantity = Number(item.quantity)
+      if (!item.productId || !Number.isFinite(quantity) || quantity <= 0) continue
+      const unit = this.productUnit(item.productId) || "unid."
+      totalsByUnit.set(unit, (totalsByUnit.get(unit) ?? 0) + quantity)
+    }
+    if (totalsByUnit.size === 0) return "sin productos seleccionados"
+    return [...totalsByUnit]
+      .map(([unit, quantity]) =>
+        `${new Intl.NumberFormat("es-PE", { maximumFractionDigits: 3 }).format(quantity)} ${unit}`,
+      )
+      .join(" · ")
   }
 
   orderItemError(index: number): string {
@@ -160,6 +262,16 @@ export class FormDialogComponent implements OnInit {
 
   inventoryFieldError(field: string): string {
     return this.inventoryFieldErrors()[field] ?? ""
+  }
+
+  userFieldError(field: string): string {
+    return this.userFieldErrors()[field] ?? ""
+  }
+
+  clearUserFieldError(field: string): void {
+    this.userFieldErrors.update((errors) =>
+      Object.fromEntries(Object.entries(errors).filter(([key]) => key !== field)),
+    )
   }
 
   private focusFirstInventoryError(fields: Array<{ field: string }>): void {
@@ -215,6 +327,24 @@ export class FormDialogComponent implements OnInit {
     const kind = this.kind
     this.clearOrderErrors()
     this.clientErrors.set([])
+    this.userFieldErrors.set({})
+    if (kind === "user") {
+      const errors: Record<string, string> = {}
+      if (this.name.trim().length < 2) errors["name"] = "Ingresa el nombre completo."
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(this.email.trim())) {
+        errors["email"] = "Ingresa un correo válido."
+      }
+      if (this.password.length < 10) {
+        errors["password"] = "La contraseña debe tener al menos 10 caracteres."
+      }
+      if (this.phone.trim() && !/^9\d{8}$/.test(this.phone.trim())) {
+        errors["phone"] = "El celular debe tener 9 dígitos y comenzar con 9."
+      }
+      if (Object.keys(errors).length) {
+        this.userFieldErrors.set(errors)
+        return
+      }
+    }
     if (kind === "client") {
       const errors = validarDatosCliente({
         contact: this.contact.trim(),
@@ -256,6 +386,7 @@ export class FormDialogComponent implements OnInit {
             })),
           })
           this.close()
+          this.state.ordersRefresh.update((value) => value + 1)
           this.state.showToast(`Pedido ${result.order.code} creado. El cliente puede consultar con el código del pedido y los últimos cuatro dígitos de su teléfono.`)
           break
           }
@@ -304,6 +435,7 @@ export class FormDialogComponent implements OnInit {
             email: this.email,
             password: this.password,
             role: this.role,
+            ...(this.phone.trim() ? { phone: this.phone.trim() } : {}),
           })
           break
         case "product":
@@ -335,6 +467,18 @@ export class FormDialogComponent implements OnInit {
         this.state.showToast(`${title} guardado correctamente.`)
       }
     } catch (error) {
+      if (kind === "user" && error instanceof ApiRequestError) {
+        const fieldErrors = Object.fromEntries(
+          error.fields.map(({ field, message }) => [field, message]),
+        )
+        if (error.code === "CONFLICT" && !Object.keys(fieldErrors).length) {
+          fieldErrors["email"] = "Este correo ya está registrado."
+        }
+        if (Object.keys(fieldErrors).length) {
+          this.userFieldErrors.set(fieldErrors)
+          return
+        }
+      }
       if (kind === "order" && error instanceof ApiRequestError && error.fields.length) {
         const fieldErrors = Object.fromEntries(
           error.fields

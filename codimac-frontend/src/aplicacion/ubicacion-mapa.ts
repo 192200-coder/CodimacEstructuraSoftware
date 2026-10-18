@@ -3,7 +3,11 @@ export interface CoordenadasMapa {
   longitude: number
 }
 
-export type CambioUbicacionMapa = (coordinates: CoordenadasMapa, address?: string) => void
+export type CambioUbicacionMapa = (
+  coordinates: CoordenadasMapa,
+  address?: string,
+  error?: string,
+) => void
 
 export interface PuertoUbicacionMapa {
   initialize(

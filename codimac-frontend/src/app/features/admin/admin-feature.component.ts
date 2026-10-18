@@ -4,6 +4,7 @@ import { FormsModule } from "@angular/forms"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
+import { MapLocationPickerComponent } from "../../shared/map-location-picker.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { AuditEvent } from "../../../lib/codimac-api"
 import { HistoryPageComponent } from "../dispatcher/history-page.component"
@@ -19,7 +20,7 @@ interface RouteParameters {
 @Component({
   selector: "codimac-admin",
   standalone: true,
-  imports: [DatePipe, FormsModule, HistoryPageComponent, IconComponent, StatusBadgeComponent],
+  imports: [DatePipe, FormsModule, HistoryPageComponent, IconComponent, MapLocationPickerComponent, StatusBadgeComponent],
   templateUrl: "./admin-feature.component.html",
 })
 export class AdminFeatureComponent {
@@ -35,6 +36,7 @@ export class AdminFeatureComponent {
   auditEntidad = ""
   auditAccion = ""
   editName = ""
+  editPhone = ""
   editRole = "Despachador"
   editActive = true
   editPassword = ""
@@ -75,7 +77,7 @@ export class AdminFeatureComponent {
 
   tableData: Record<string, { headers: string[]; rows: string[][] }> = {
     Usuarios: {
-      headers: ["Nombre", "Correo", "Rol", "Estado"],
+      headers: ["Nombre", "Correo", "Celular", "Rol", "Estado"],
       rows: [],
     },
     Productos: {
@@ -115,6 +117,11 @@ export class AdminFeatureComponent {
     this.state.action(message)
   }
 
+  updateWarehouseLocation(location: { latitude: number; longitude: number }): void {
+    this.warehouseLatitude = Number(location.latitude.toFixed(6))
+    this.warehouseLongitude = Number(location.longitude.toFixed(6))
+  }
+
   async saveParameters(): Promise<void> {
     try {
       await this.api.updateParameters({
@@ -139,7 +146,7 @@ export class AdminFeatureComponent {
       try {
         await this.api.loadDemoData()
         this.state.catalogRefresh.update((value) => value + 1)
-        this.state.showToast("Datos demostrativos cargados. No se reemplazaron registros existentes.")
+        this.state.showToast("Datos de ejemplo inicializados correctamente")
       } catch (error) {
         this.state.showToast(error instanceof Error ? error.message : "No se pudieron cargar los datos demostrativos.")
       } finally {
@@ -155,8 +162,9 @@ export class AdminFeatureComponent {
     this.editingId.set(id)
     if (section === "Usuarios") {
       this.editName = row[0]
-      this.editRole = row[2]
-      this.editActive = row[3] === "Activo"
+      this.editPhone = row[2] === "—" ? "" : row[2]
+      this.editRole = row[3]
+      this.editActive = row[4] === "Activo"
       this.editPassword = ""
     } else if (section === "Productos") {
       this.editName = row[0]
@@ -181,6 +189,7 @@ export class AdminFeatureComponent {
       if (section === "Usuarios") {
         await this.api.updateAdminUser(id, {
           name: this.editName.trim(),
+          phone: this.editPhone.trim() || null,
           role: this.editRole,
           active: this.editActive,
           ...(this.editPassword ? { password: this.editPassword } : {}),
@@ -267,6 +276,7 @@ export class AdminFeatureComponent {
         this.tableData["Usuarios"].rows = users.map((user) => [
           user.display_name,
           user.email,
+          user.phone ?? "—",
           user.role,
           user.active ? "Activo" : "Inactivo",
         ])

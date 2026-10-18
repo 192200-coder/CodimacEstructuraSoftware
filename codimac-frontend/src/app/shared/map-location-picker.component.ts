@@ -8,17 +8,19 @@ import { CodimacApiService } from "../core/codimac-api.service"
   selector: "codimac-map-location-picker",
   standalone: true,
   template: `
-    <label class="map-address-field">
-      Buscar dirección en el mapa
-      <input
-        #addressInput
-        type="search"
-        autocomplete="street-address"
-        [value]="address"
-        (input)="onAddressInput($event)"
-        placeholder="Escribe una dirección o marca el mapa"
-      />
-    </label>
+    @if (showAddressInput) {
+      <label class="map-address-field">
+        Dirección (escrita o seleccionada en el mapa)
+        <input
+          #addressInput
+          type="search"
+          autocomplete="street-address"
+          [value]="address"
+          (input)="onAddressInput($event)"
+          placeholder="Escribe una dirección o marca el mapa"
+        />
+      </label>
+    }
     <div #mapContainer class="location-map" role="application" aria-label="Selector de ubicación del cliente"></div>
     <p class="map-provider-note">{{ providerMessage() }}</p>
     @if (error()) { <p class="tracking-error" role="alert">{{ error() }}</p> }
@@ -28,10 +30,12 @@ export class MapLocationPickerComponent implements AfterViewInit, OnDestroy {
   @Input() address = ""
   @Input() latitude: number | null = null
   @Input() longitude: number | null = null
+  @Input() showAddressInput = true
+  @Input() externalAddressInput: HTMLInputElement | null = null
   @Output() readonly addressChange = new EventEmitter<string>()
   @Output() readonly locationChange = new EventEmitter<CoordenadasMapa>()
   @ViewChild("mapContainer", { static: true }) private readonly mapContainer!: ElementRef<HTMLDivElement>
-  @ViewChild("addressInput", { static: true }) private readonly addressInput!: ElementRef<HTMLInputElement>
+  @ViewChild("addressInput") private readonly addressInput?: ElementRef<HTMLInputElement>
 
   readonly error = signal("")
   readonly providerMessage = signal("Cargando selector de mapa…")
@@ -40,6 +44,11 @@ export class MapLocationPickerComponent implements AfterViewInit, OnDestroy {
   constructor(private readonly api: CodimacApiService) {}
 
   async ngAfterViewInit(): Promise<void> {
+    if (!this.addressElement) {
+      this.error.set("El selector de mapa necesita un campo de dirección.")
+      this.providerMessage.set("")
+      return
+    }
     const initial = this.latitude !== null && this.longitude !== null
       ? { latitude: this.latitude, longitude: this.longitude }
       : null
@@ -79,24 +88,32 @@ export class MapLocationPickerComponent implements AfterViewInit, OnDestroy {
 
   onAddressInput(event: Event): void {
     this.addressChange.emit((event.target as HTMLInputElement).value)
+    this.error.set("")
   }
 
   private initializeMap(
     adapter: PuertoUbicacionMapa,
     initial: CoordenadasMapa | null,
   ): Promise<() => void> {
-    const onChange: CambioUbicacionMapa = (coordinates, address) => {
+    const addressInput = this.addressElement
+    if (!addressInput) throw new Error("El selector de mapa necesita un campo de dirección.")
+    const onChange: CambioUbicacionMapa = (coordinates, address, error) => {
       this.locationChange.emit(coordinates)
-      if (address) {
-        this.addressInput.nativeElement.value = address
+      if (address !== undefined) {
+        addressInput.value = address
         this.addressChange.emit(address)
       }
+      this.error.set(error ?? "")
     }
     return adapter.initialize(
       this.mapContainer.nativeElement,
-      this.addressInput.nativeElement,
+      addressInput,
       initial,
       onChange,
     )
+  }
+
+  private get addressElement(): HTMLInputElement | null {
+    return this.externalAddressInput ?? this.addressInput?.nativeElement ?? null
   }
 }

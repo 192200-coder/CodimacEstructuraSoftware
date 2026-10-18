@@ -105,6 +105,7 @@ export class AppShellComponent implements OnDestroy {
     for (const notification of this.notifications()) readIds.add(notification.id)
     this.readNotificationIds.set(readIds)
     this.persistReadNotificationIds()
+    this.state.showToast("Notificaciones marcadas como leídas.")
   }
 
   markNotificationRead(notification: RemoteNotification): void {
@@ -136,9 +137,10 @@ export class AppShellComponent implements OnDestroy {
 
   private async loadNotifications(showError = false): Promise<void> {
     try {
-      this.notifications.set(await this.api.getNotifications())
-      this.notificationError.set("")
+      const notifications = await this.api.getNotifications()
       this.loadReadNotificationIds()
+      this.notifications.set(notifications)
+      this.notificationError.set("")
     } catch (error) {
       const message = error instanceof Error
         ? error.message

@@ -112,13 +112,14 @@ class PostgresRouteTransaction implements RouteTransaction {
 
   async lockRouteForRemoval(routeId: string) {
     const result = await this.client.query(
-      "SELECT codigo AS code,status,distance_km,estimated_minutes,estimated_cost FROM routes WHERE id=$1 FOR UPDATE",
+      "SELECT codigo AS code,status,vehicle_id,distance_km,estimated_minutes,estimated_cost FROM routes WHERE id=$1 FOR UPDATE",
       [routeId],
     )
     if (!result.rowCount) return null
     return {
       code: result.rows[0].code as string,
       status: result.rows[0].status as string,
+      vehicleId: (result.rows[0].vehicle_id as string | null) ?? null,
       distanceKm: Number(result.rows[0].distance_km),
       estimatedMinutes: Number(result.rows[0].estimated_minutes),
       estimatedCost: Number(result.rows[0].estimated_cost),
@@ -534,11 +535,18 @@ export class PostgresRouteRepository implements RouteRepository {
   async listRoutes(): Promise<unknown[]> {
     const result = await pool.query(
       `SELECT r.*,r.codigo AS code,p.display_name AS driver_name, v.plate AS vehicle_plate,
+         COALESCE((
+           SELECT sum(oi.quantity*product.weight_kg)
+           FROM route_stops route_stop
+           JOIN order_items oi ON oi.order_id=route_stop.order_id
+           JOIN products product ON product.id=oi.product_id
+           WHERE route_stop.route_id=r.id
+         ),0) AS weight_kg,
          count(s.id)::int AS stop_count,
          COALESCE(jsonb_agg(jsonb_build_object(
            'id',s.id,'sequence_number',s.sequence_number,'status',s.status,
            'attempts',s.attempts,'eta_at',s.eta_at,'delivered_at',s.delivered_at,
-           'received_by',s.received_by,'code',o.codigo,'client_name',c.name,'address',c.address
+           'received_by',s.received_by,'order_id',o.id,'code',o.codigo,'client_name',c.name,'address',c.address
          ) ORDER BY s.sequence_number) FILTER (WHERE s.id IS NOT NULL),'[]'::jsonb) AS route_stops
        FROM routes r LEFT JOIN profiles p ON p.id=r.driver_id
        LEFT JOIN vehicles v ON v.id=r.vehicle_id LEFT JOIN route_stops s ON s.route_id=r.id
@@ -552,6 +560,13 @@ export class PostgresRouteRepository implements RouteRepository {
     const result = await pool.query(
       `SELECT r.id,r.codigo AS code,r.status,r.created_at,r.started_at,r.closed_at,
          r.distance_km,r.estimated_minutes,r.estimated_liters,r.estimated_cost,
+         COALESCE((
+           SELECT sum(oi.quantity*product.weight_kg)
+           FROM route_stops route_stop
+           JOIN order_items oi ON oi.order_id=route_stop.order_id
+           JOIN products product ON product.id=oi.product_id
+           WHERE route_stop.route_id=r.id
+         ),0) AS weight_kg,
          p.display_name AS driver_name,v.plate AS vehicle_plate,
          count(s.id)::int AS stop_count,
          count(s.id) FILTER (WHERE s.status='Entregada')::int AS delivered,
@@ -564,7 +579,7 @@ export class PostgresRouteRepository implements RouteRepository {
          COALESCE(jsonb_agg(jsonb_build_object(
            'id',s.id,'sequence_number',s.sequence_number,'status',s.status,
            'attempts',s.attempts,'delivered_at',s.delivered_at,'received_by',s.received_by,
-           'code',o.codigo,'client_name',c.name,'address',c.address
+           'order_id',o.id,'code',o.codigo,'client_name',c.name,'address',c.address
          ) ORDER BY s.sequence_number) FILTER (WHERE s.id IS NOT NULL),'[]'::jsonb) AS route_stops,
          CASE WHEN r.started_at IS NOT NULL AND r.closed_at IS NOT NULL
            THEN round((extract(epoch FROM (r.closed_at-r.started_at))/60)::numeric,1)

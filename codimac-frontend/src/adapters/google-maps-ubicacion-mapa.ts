@@ -48,17 +48,38 @@ export class GoogleMapsUbicacionMapa implements PuertoUbicacionMapa {
       position: initial ? center : undefined,
       draggable: true,
     })
+    const geocoder = new google.maps.Geocoder()
+    let lookupSequence = 0
+    const addressInputListener = () => {
+      lookupSequence += 1
+    }
+    addressInput.addEventListener("input", addressInputListener)
     const updateLocation = (location: google.maps.LatLng, address?: string) => {
       marker.setPosition(location)
       map.panTo(location)
-      onChange({ latitude: location.lat(), longitude: location.lng() }, address)
+      const coordinates = { latitude: location.lat(), longitude: location.lng() }
+      const sequence = ++lookupSequence
+      if (address !== undefined) {
+        onChange(coordinates, address)
+        return
+      }
+      onChange(coordinates, "")
+      geocoder.geocode({ location }, (results, status) => {
+        if (sequence !== lookupSequence) return
+        const formattedAddress = results?.[0]?.formatted_address
+        if (status !== "OK" || !formattedAddress) {
+          onChange(coordinates, undefined, "No se pudo obtener la dirección de esta ubicación. Puedes escribirla manualmente.")
+          return
+        }
+        onChange(coordinates, formattedAddress)
+      })
     }
     const mapListener = map.addListener("click", (event: google.maps.MapMouseEvent) => {
       if (event.latLng) updateLocation(event.latLng)
     })
     const markerListener = marker.addListener("dragend", () => {
       const location = marker.getPosition()
-      if (location) onChange({ latitude: location.lat(), longitude: location.lng() })
+      if (location) updateLocation(location)
     })
     const autocomplete = new google.maps.places.Autocomplete(addressInput, {
       fields: ["formatted_address", "geometry"],
@@ -74,6 +95,7 @@ export class GoogleMapsUbicacionMapa implements PuertoUbicacionMapa {
       mapListener.remove()
       markerListener.remove()
       autocompleteListener.remove()
+      addressInput.removeEventListener("input", addressInputListener)
       marker.setMap(null)
     }
   }

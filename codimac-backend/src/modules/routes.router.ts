@@ -2,7 +2,7 @@ import { Router } from "express"
 import { z } from "zod"
 import type { RouteUseCases } from "../application/routes.js"
 import { authenticate, requireRole } from "../http/auth.js"
-import { idParamSchema, uuidSchema, createRouteSchema } from "../http/schemas.js"
+import { idParamSchema, uuidSchema, createRouteSchema, createRouteBatchSchema } from "../http/schemas.js"
 
 export function createRoutesRouter(useCases: RouteUseCases) {
   const router = Router()
@@ -18,6 +18,14 @@ export function createRoutesRouter(useCases: RouteUseCases) {
       routeId: route.id,
       code: route.code,
       status: route.status,
+    })
+  })
+
+  router.post("/routes/batch", requireRole("Despachador"), async (req, res) => {
+    const body = createRouteBatchSchema.parse(req.body)
+    const routes = await useCases.createBatch({ ...body, actorId: req.user!.id })
+    res.status(201).json({
+      routes: routes.map((route) => ({ routeId: route.id, code: route.code, status: route.status })),
     })
   })
 

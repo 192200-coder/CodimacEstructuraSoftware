@@ -3,6 +3,7 @@ import { DatePipe } from "@angular/common"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
+import { NumeroPipe } from "../../shared/numero.pipe"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { RemoteInventoryMovement } from "../../../lib/codimac-api"
 
@@ -18,7 +19,7 @@ interface InventoryRow {
 @Component({
   selector: "codimac-inventory-page",
   standalone: true,
-  imports: [DatePipe, IconComponent, StatusBadgeComponent],
+  imports: [DatePipe, IconComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./inventory-page.component.html",
 })
 export class InventoryPageComponent {
@@ -72,10 +73,15 @@ export class InventoryPageComponent {
 
   showMovements(productId = this.selectedProductId()): void {
     this.activeTab.set("movements")
-    if (productId) {
-      this.selectedProductId.set(productId)
-      void this.loadMovements(productId)
+    const id = productId || this.remoteProducts()[0]?.id || ""
+    if (id) {
+      this.selectedProductId.set(id)
+      void this.loadMovements(id)
     }
+  }
+
+  selectMovementProduct(event: Event): void {
+    this.showMovements((event.target as HTMLSelectElement).value)
   }
 
   private async loadMovements(productId: string): Promise<void> {

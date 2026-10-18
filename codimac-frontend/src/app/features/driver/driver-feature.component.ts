@@ -10,6 +10,7 @@ import type {
   RemoteStop,
 } from "../../../lib/codimac-api"
 import { IconComponent } from "../../shared/icon.component"
+import { NumeroPipe } from "../../shared/numero.pipe"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import {
   clientTelephoneUrl,
@@ -20,7 +21,7 @@ import {
 @Component({
   selector: "codimac-driver",
   standalone: true,
-  imports: [DatePipe, FormsModule, IconComponent, StatusBadgeComponent],
+  imports: [DatePipe, FormsModule, IconComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./driver-feature.component.html",
 })
 export class DriverFeatureComponent implements OnDestroy {
@@ -61,6 +62,11 @@ export class DriverFeatureComponent implements OnDestroy {
       const previousRoute = this.remoteRoute()
       this.remoteRoute.set(route)
       this.lastRouteLoadError = ""
+      if (!route && previousRoute?.status === "En curso" && this.screen() > 0) {
+        this.closedSummary.set(await this.api.getDriverRouteSummary(previousRoute.id))
+        this.screen.set(6)
+        return
+      }
       if (
         this.hasLoadedRemoteRoute &&
         route?.status === "Asignada" &&
@@ -155,6 +161,14 @@ export class DriverFeatureComponent implements OnDestroy {
       this.state.showToast("No tienes una ruta asignada por el backend.")
       return
     }
+    if (route.status === "En curso") {
+      this.screen.set(1)
+      return
+    }
+    if (route.status !== "Asignada") {
+      this.state.showToast("La ruta todavía no está asignada a este chofer.")
+      return
+    }
     try {
       await this.api.startDriverRoute(route.id)
       this.remoteRoute.set(await this.api.getDriverRoute())
@@ -205,13 +219,26 @@ export class DriverFeatureComponent implements OnDestroy {
       this.state.showToast("No hay una parada activa para registrar una incidencia.")
       return
     }
+    const route = this.remoteRoute()
+    if (!route) {
+      this.state.showToast("No se encontró la ruta activa.")
+      return
+    }
     try {
       const result = await this.api.reportStopIncident(
         stop.id,
         this.incidentCause,
         this.incidentNotes,
       ) as { result: "Reprogramada" | "No entregada" }
-      this.remoteRoute.set(await this.api.getDriverRoute())
+      const activeRoute = await this.api.getDriverRoute()
+      this.remoteRoute.set(activeRoute)
+      if (!activeRoute) {
+        this.closedSummary.set(await this.api.getDriverRouteSummary(route.id))
+        this.screen.set(6)
+        this.incidentNotes = ""
+        this.state.showToast("Incidencia registrada. La ruta se cerró al resolverse la última parada.")
+        return
+      }
       this.incidentNotes = ""
       this.screen.set(1)
       this.state.showToast(

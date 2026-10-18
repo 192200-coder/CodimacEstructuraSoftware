@@ -3,7 +3,7 @@
     <p class="section-kicker">ENTORNO DE DEMOSTRACIÓN</p>
     <h2>Cargar datos de ejemplo</h2>
     <p>Agrega clientes, productos, vehículos y pedidos de demostración que aún no existan. La operación es idempotente y no elimina ni reemplaza registros.</p>
-    <button class="button primary" type="button" [disabled]="loadingDemoData()" (click)="loadDemoData()">{{ loadingDemoData() ? "Cargando…" : "Cargar datos faltantes" }}</button>
+    <button class="button primary" type="button" [disabled]="loadingDemoData()" (click)="loadDemoData()">{{ loadingDemoData() ? "Guardando…" : "Cargar datos faltantes" }}</button>
   </section>
 } @else if (state.active() === "Indicadores") {
   <section class="metric-grid admin-metrics">
@@ -15,7 +15,7 @@
   </section>
 } @else if (state.active() === "Parámetros") {
   <section class="settings-grid">
-    <div class="card"><p class="section-kicker">UBICACIÓN</p><h2>Almacén principal</h2><div class="mini-map large"><div class="map-road one"></div><div class="map-road two"></div><span><codimac-icon name="pin" [size]="24" /></span></div><label class="setting-field">Latitud<input type="number" step="0.000001" [(ngModel)]="warehouseLatitude" /></label><label class="setting-field">Longitud<input type="number" step="0.000001" [(ngModel)]="warehouseLongitude" /></label></div>
+    <div class="card"><p class="section-kicker">UBICACIÓN</p><h2>Almacén principal</h2><codimac-map-location-picker class="client-map-picker" [showAddressInput]="true" address="Almacén principal" [latitude]="warehouseLatitude" [longitude]="warehouseLongitude" (locationChange)="updateWarehouseLocation($event)" /><label class="setting-field">Latitud<input type="number" step="0.000001" [(ngModel)]="warehouseLatitude" /></label><label class="setting-field">Longitud<input type="number" step="0.000001" [(ngModel)]="warehouseLongitude" /></label></div>
     <div class="card"><p class="section-kicker">COSTOS Y TIEMPOS</p><h2>Parámetros de ruta</h2>@if (!parametersConfigured) {<p>Aún no hay parámetros guardados en el backend.</p>}<label class="setting-field">Combustible por litro<input type="number" min="0.01" step="0.01" [(ngModel)]="fuelPrice" /></label><label class="setting-field">Minutos por parada<input type="number" min="0" step="1" [(ngModel)]="minutesPerStop" /></label><label class="setting-field">Radio del área de servicio (km)<input type="number" min="0.1" max="1000" step="1" [(ngModel)]="serviceRadiusKm" /></label><button class="button primary" type="button" (click)="saveParameters()">Guardar cambios</button></div>
   </section>
 } @else if (state.active() === "Auditoría") {
@@ -58,12 +58,21 @@
     @if (selectedData) {
       <div class="table-wrap"><table><thead><tr>@for (header of selectedData.headers; track header) {<th>{{ header }}</th>}<th>Acciones</th></tr></thead><tbody>@for (row of selectedData.rows; track row[0]; let i = $index) {<tr>@for (cell of row; track $index) {<td>@if (cell === "Activo" || cell === "Disponible") {<codimac-status [status]="cell" />} @else { {{ cell }} }</td>}<td>@if (["Usuarios","Productos","Vehículos"].includes(state.active())) {<button class="button secondary" type="button" (click)="startEdit(i)">Editar</button>}</td></tr>} @empty {<tr><td [attr.colspan]="selectedData.headers.length + 1">No hay registros para mostrar.</td></tr>}</tbody></table></div>
       @if (editingId()) {
-        <form class="form-grid" (ngSubmit)="saveEdit()">
+        <form class="form-grid admin-edit-form" (ngSubmit)="saveEdit()">
           @if (state.active() === "Usuarios") {
-            <label>Nombre<input name="editName" [(ngModel)]="editName" required /></label>
+            <label [class.field-invalid]="editNameModel.invalid && editNameModel.touched">Nombre<input #editNameModel="ngModel" name="editName" [(ngModel)]="editName" required minlength="2" />
+              @if (editNameModel.invalid && editNameModel.touched) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />Ingresa el nombre completo.</span>}
+            </label>
+            <label>Celular<input name="editPhone" type="tel" inputmode="numeric" maxlength="9" [(ngModel)]="editPhone" placeholder="9 dígitos o vacío" /></label>
             <label>Rol<select name="editRole" [(ngModel)]="editRole"><option>Despachador</option><option>Chofer</option><option>Administrador</option></select></label>
-            <label>Estado<select name="editActive" [(ngModel)]="editActive"><option [ngValue]="true">Activo</option><option [ngValue]="false">Inactivo</option></select></label>
-            <label>Nueva contraseña (opcional)<input name="editPassword" type="password" minlength="10" [(ngModel)]="editPassword" /></label>
+            <label class="user-active-toggle" for="editActive">
+              <span><strong>Usuario activo</strong><small>{{ editActive ? "Puede iniciar sesión" : "Acceso desactivado" }}</small></span>
+              <input id="editActive" name="editActive" type="checkbox" role="switch" [(ngModel)]="editActive" />
+              <span class="toggle-track" aria-hidden="true"><span></span></span>
+            </label>
+            <label [class.field-invalid]="editPasswordModel.invalid && editPasswordModel.touched">Nueva contraseña (opcional)<input #editPasswordModel="ngModel" name="editPassword" type="password" minlength="10" [(ngModel)]="editPassword" />
+              @if (editPasswordModel.invalid && editPasswordModel.touched) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />Usa al menos 10 caracteres.</span>}
+            </label>
           } @else if (state.active() === "Productos") {
             <label>Nombre<input name="editName" [(ngModel)]="editName" required /></label>
             <label>Unidad<input name="editUnit" [(ngModel)]="editUnit" required /></label>
@@ -77,8 +86,10 @@
             <label>Rendimiento (km/L)<input name="editFuelEfficiency" type="number" min="0.001" [(ngModel)]="editFuelEfficiency" required /></label>
             <label>Disponibilidad<select name="editAvailable" [(ngModel)]="editAvailable"><option [ngValue]="true">Disponible</option><option [ngValue]="false">No disponible</option></select></label>
           }
-          <button class="button primary" type="submit">Guardar cambios</button>
-          <button class="button secondary" type="button" (click)="cancelEdit()">Cancelar</button>
+          <footer class="form-actions">
+            <button class="button secondary" type="button" (click)="cancelEdit()">Cancelar</button>
+            <button class="button primary" type="submit">Guardar cambios</button>
+          </footer>
         </form>
       }
     }

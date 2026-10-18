@@ -8,7 +8,20 @@
   <aside class="card detail-panel history-detail">
     @if (selectedRoute; as route) {
       <div class="card-header"><div><p class="section-kicker">DETALLE DEL REPARTO</p><h2>{{ route.code }}</h2></div><codimac-status [status]="route.status" /></div>
-      <dl class="detail-list"><div><dt>Fecha</dt><dd>{{ route.created_at | date:"short":"America/Lima" }}</dd></div><div><dt>Inicio</dt><dd>{{ route.started_at ? (route.started_at | date:"short":"America/Lima") : "—" }}</dd></div><div><dt>Cierre</dt><dd>{{ route.closed_at ? (route.closed_at | date:"short":"America/Lima") : "—" }}</dd></div><div><dt>Duración real</dt><dd>{{ route.duration_minutes ?? "—" }} min</dd></div><div><dt>Chofer</dt><dd>{{ route.driver_name ?? "Sin asignar" }}</dd></div><div><dt>Vehículo</dt><dd>{{ route.vehicle_plate ?? "Sin asignar" }}</dd></div><div><dt>Resultado</dt><dd>{{ route.result }} ({{ route.delivered }} entregadas, {{ route.not_delivered }} no entregadas)</dd></div><div><dt>Paradas</dt><dd>{{ route.stop_count }}</dd></div><div><dt>Distancia</dt><dd>{{ route.distance_km ?? "—" }} km</dd></div><div><dt>Tiempo estimado</dt><dd>{{ route.estimated_minutes ?? "—" }} min</dd></div><div><dt>Combustible estimado</dt><dd>{{ route.estimated_liters ?? "—" }} L</dd></div><div><dt>Costo estimado</dt><dd>S/ {{ route.estimated_cost ?? "—" }}</dd></div></dl>
+      <dl class="detail-grid">
+        <div><dt>Fecha</dt><dd>{{ route.created_at | date:"short":"America/Lima" }}</dd></div>
+        <div><dt>Inicio</dt><dd>{{ route.started_at ? (route.started_at | date:"short":"America/Lima") : "—" }}</dd></div>
+        <div><dt>Cierre</dt><dd>{{ route.closed_at ? (route.closed_at | date:"short":"America/Lima") : "—" }}</dd></div>
+        <div><dt>Duración real</dt><dd>{{ route.duration_minutes | numero:0 }} min</dd></div>
+        <div><dt>Chofer</dt><dd>{{ route.driver_name ?? "Sin asignar" }}</dd></div>
+        <div><dt>Vehículo</dt><dd>{{ route.vehicle_plate ?? "Sin asignar" }}</dd></div>
+        <div class="wide"><dt>Resultado</dt><dd>{{ route.result }} ({{ route.delivered }} entregadas, {{ route.not_delivered }} no entregadas)</dd></div>
+        <div><dt>Paradas</dt><dd>{{ route.stop_count }}</dd></div>
+        <div><dt>Distancia</dt><dd>{{ route.distance_km | numero }} km</dd></div>
+        <div><dt>Tiempo estimado</dt><dd>{{ route.estimated_minutes | numero:0 }} min</dd></div>
+        <div><dt>Combustible estimado</dt><dd>{{ route.estimated_liters | numero:2:2 }} L</dd></div>
+        <div><dt>Costo estimado</dt><dd>S/ {{ route.estimated_cost | numero:2:2 }}</dd></div>
+      </dl>
       <div class="history-stops">@for (stop of route.route_stops; track stop.id) {<p>{{ stop.sequence_number }}. {{ stop.code }} · {{ stop.client_name }} · {{ stop.status }} · {{ stop.delivered_at ? (stop.delivered_at | date:"short":"America/Lima") : "Sin hora de entrega" }}@if (stop.received_by) { · Recibió: {{ stop.received_by }}}</p>}</div>
     } @else {
       <div class="card-header"><div><p class="section-kicker">DETALLE DEL REPARTO</p><h2>Sin repartos</h2></div></div>

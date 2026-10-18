@@ -98,6 +98,12 @@ export class ClientsPageComponent {
     }
   }
 
+  editFromMap(location: { latitude: number; longitude: number }): void {
+    if (this.editing()) return
+    this.beginEdit()
+    this.updateLocation(location)
+  }
+
   updateLocation(location: { latitude: number; longitude: number }): void {
     if (!this.draft) return
     this.draft.latitude = location.latitude

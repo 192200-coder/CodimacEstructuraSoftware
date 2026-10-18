@@ -1,4 +1,4 @@
-import { inTransaction, pool } from "../db/pool.js"
+﻿import { inTransaction, pool } from "../db/pool.js"
 import type {
   AuditQuery,
   CatalogParametersInput,
@@ -15,7 +15,7 @@ import type { RegistroAuditoria } from "../application/registro-auditoria.js"
 import { loadDemoData } from "../db/demo-data.js"
 import { PostgresRegistroAuditoria } from "./postgres-registro-auditoria.js"
 
-const catalogFields: Record<CatalogResource, readonly string[]> = {
+export const catalogFields: Record<CatalogResource, readonly string[]> = {
   clients: ["name", "contact", "address", "reference", "latitude", "longitude"],
   products: ["name", "unit", "weight_kg", "total_stock", "active"],
   vehicles: [
@@ -26,6 +26,29 @@ const catalogFields: Record<CatalogResource, readonly string[]> = {
     "fuel_efficiency_km_l",
     "available",
   ],
+}
+
+// Todas las tablas de catÃ¡logo tienen updated_at (migraciÃ³n 009).
+const catalogTablesWithUpdatedAt: ReadonlySet<CatalogResource> = new Set([
+  "clients",
+  "products",
+  "vehicles",
+])
+
+export function buildCatalogUpdate(
+  resource: CatalogResource,
+  body: CatalogRecord,
+): { text: string; fields: string[] } | null {
+  const fields = Object.keys(body).filter((field) =>
+    catalogFields[resource].includes(field),
+  )
+  if (!fields.length) return null
+  const assignments = fields.map((field, index) => `${field}=$${index + 1}`)
+  if (catalogTablesWithUpdatedAt.has(resource)) assignments.push("updated_at=now()")
+  return {
+    text: `UPDATE ${resource} SET ${assignments.join(",")} WHERE id=$${fields.length + 1} RETURNING *`,
+    fields,
+  }
 }
 
 class PostgresCatalogTransaction implements CatalogTransaction {
@@ -69,19 +92,20 @@ class PostgresCatalogTransaction implements CatalogTransaction {
     email: string
     passwordHash: string
     name: string
+    phone: string | null
     role: CatalogRole
   }): Promise<CatalogUser> {
     const result = await this.client.query(
-      `INSERT INTO profiles(email,password_hash,display_name,role)
-       VALUES($1,$2,$3,$4) RETURNING id,email,display_name,role,active,created_at`,
-      [input.email, input.passwordHash, input.name, input.role],
+      `INSERT INTO profiles(email,password_hash,display_name,phone,role)
+       VALUES($1,$2,$3,$4,$5) RETURNING id,email,display_name,phone,role,active,created_at`,
+      [input.email, input.passwordHash, input.name, input.phone, input.role],
     )
     return result.rows[0] as CatalogUser
   }
 
   async lockUser(userId: string): Promise<CatalogUserSnapshot | null> {
     const result = await this.client.query(
-      "SELECT email,display_name,role,active FROM profiles WHERE id=$1 FOR UPDATE",
+      "SELECT email,display_name,phone,role,active FROM profiles WHERE id=$1 FOR UPDATE",
       [userId],
     )
     return result.rowCount ? result.rows[0] as CatalogUserSnapshot : null
@@ -89,6 +113,7 @@ class PostgresCatalogTransaction implements CatalogTransaction {
 
   async updateUser(userId: string, update: {
     name?: string
+    phone?: string | null
     role?: CatalogRole
     active?: boolean
     passwordHash?: string
@@ -98,6 +123,10 @@ class PostgresCatalogTransaction implements CatalogTransaction {
     if (update.name !== undefined) {
       values.push(update.name)
       assignments.push(`display_name=$${values.length}`)
+    }
+    if (update.phone !== undefined) {
+      values.push(update.phone)
+      assignments.push(`phone=$${values.length}`)
     }
     if (update.role !== undefined) {
       values.push(update.role)
@@ -114,7 +143,7 @@ class PostgresCatalogTransaction implements CatalogTransaction {
     values.push(userId)
     const result = await this.client.query(
       `UPDATE profiles SET ${assignments.join(",")} WHERE id=$${values.length}
-       RETURNING id,email,display_name,role,active,created_at`,
+       RETURNING id,email,display_name,phone,role,active,created_at`,
       values,
     )
     return result.rows[0] as CatalogUser
@@ -184,17 +213,12 @@ class PostgresCatalogTransaction implements CatalogTransaction {
     id: string,
     body: CatalogRecord,
   ): Promise<CatalogRecord | null> {
-    const selectedFields = Object.keys(body).filter((field) =>
-      catalogFields[resource].includes(field),
-    )
-    if (!selectedFields.length) return null
-    const values = selectedFields.map((field) => body[field])
-    const assignments = selectedFields.map((field, index) => `${field}=$${index + 1}`)
-    assignments.push("updated_at=now()")
-    const result = await this.client.query(
-      `UPDATE ${resource} SET ${assignments.join(",")} WHERE id=$${selectedFields.length + 1} RETURNING *`,
-      [...values, id],
-    )
+    const update = buildCatalogUpdate(resource, body)
+    if (!update) return null
+    const result = await this.client.query(update.text, [
+      ...update.fields.map((field) => body[field]),
+      id,
+    ])
     return result.rowCount ? result.rows[0] : null
   }
 }
@@ -236,7 +260,7 @@ export class PostgresCatalogRepository implements CatalogRepository {
 
   async listUsers(): Promise<CatalogUser[]> {
     const result = await pool.query(
-      "SELECT id,email,display_name,role,active,created_at FROM profiles ORDER BY display_name",
+      "SELECT id,email,display_name,phone,role,active,created_at FROM profiles ORDER BY display_name",
     )
     return result.rows as CatalogUser[]
   }

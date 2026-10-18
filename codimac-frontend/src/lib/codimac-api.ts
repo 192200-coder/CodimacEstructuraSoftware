@@ -224,6 +224,7 @@ export interface RemoteRouteSummary {
   estimated_minutes: number | string | null
   estimated_liters: number | string | null
   estimated_cost: number | string | null
+  weight_kg: number | string
   driver_name: string | null
   vehicle_plate: string | null
   stop_count: number
@@ -232,6 +233,7 @@ export interface RemoteRouteSummary {
     sequence_number: number
     status: string
     attempts: number
+    order_id: string
     eta_at: string | null
     delivered_at: string | null
     received_by: string | null
@@ -384,6 +386,24 @@ export async function createRoute(input: {
   return request("/routes", { method: "POST", body: JSON.stringify(input) })
 }
 
+export interface CreateRouteBatchRequest {
+  routes: Array<{
+    orderIds: string[]
+    distanceKm: number
+    estimatedMinutes: number
+    estimatedLiters: number
+    estimatedCost: number
+    driverId: string
+    vehicleId: string
+  }>
+}
+
+export async function createRouteBatch(
+  input: CreateRouteBatchRequest,
+): Promise<{ routes: Array<{ routeId: string; code: string; status: string }> }> {
+  return request("/routes/batch", { method: "POST", body: JSON.stringify(input) })
+}
+
 export async function approveRoute(id: string): Promise<{ status: string }> {
   return request(`/routes/${encodeURIComponent(id)}/approve`, { method: "POST" })
 }
@@ -424,7 +444,7 @@ export async function getCatalog<T>(resource: "clients" | "products" | "vehicles
 
 export async function getResources() {
   return request<{
-    drivers: Array<{ id: string; display_name: string }>
+    drivers: Array<{ id: string; display_name: string; phone: string | null }>
     vehicles: Array<{
       id: string
       plate: string
@@ -437,7 +457,8 @@ export async function getResources() {
 }
 
 export async function createCatalogRecord(resource: "clients" | "products" | "vehicles", value: Record<string, unknown>) {
-  return request(`/admin/catalog/${resource}`, { method: "POST", body: JSON.stringify(value) })
+  const path = resource === "clients" ? "/catalog/clients" : `/admin/catalog/${resource}`
+  return request(path, { method: "POST", body: JSON.stringify(value) })
 }
 
 export async function updateCatalogRecord(
@@ -445,19 +466,26 @@ export async function updateCatalogRecord(
   id: string,
   value: Record<string, unknown>,
 ) {
-  return request(`/admin/catalog/${resource}/${id}`, {
+  const path = resource === "clients" ? `/catalog/clients/${id}` : `/admin/catalog/${resource}/${id}`
+  return request(path, {
     method: "PUT",
     body: JSON.stringify(value),
   })
 }
 
-export async function createAdminUser(value: { name: string; email: string; password: string; role: string }) {
+export async function createAdminUser(value: {
+  name: string
+  email: string
+  password: string
+  role: string
+  phone?: string
+}) {
   return request("/admin/users", { method: "POST", body: JSON.stringify(value) })
 }
 
 export async function updateAdminUser(
   id: string,
-  value: { name?: string; role?: string; active?: boolean; password?: string },
+  value: { name?: string; phone?: string | null; role?: string; active?: boolean; password?: string },
 ) {
   return request(`/admin/users/${id}`, { method: "PUT", body: JSON.stringify(value) })
 }
@@ -475,7 +503,14 @@ export async function createOrder(value: {
 }
 
 export async function getAdminUsers() {
-  return request<{ users: Array<{ id: string; email: string; display_name: string; role: string; active: boolean }> }>("/admin/users")
+  return request<{ users: Array<{
+    id: string
+    email: string
+    display_name: string
+    phone: string | null
+    role: string
+    active: boolean
+  }> }>("/admin/users")
 }
 
 export async function getAdminEvents() {

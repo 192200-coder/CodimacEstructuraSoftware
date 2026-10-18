@@ -71,6 +71,86 @@ function createRepository(tx: RouteTransaction): RouteRepository {
   }
 }
 
+describe("división de carga en múltiples rutas", () => {
+  function batchTransaction(weights: number[], capacities: number[]) {
+    const tx = createTransaction()
+    let sequence = 0
+    let routeIndex = -1
+    vi.mocked(tx.nextRouteSequence).mockImplementation(async () => ++sequence)
+    vi.mocked(tx.insertRoute).mockImplementation(async ({ code }) => {
+      routeIndex += 1
+      return { id: `route-${routeIndex + 1}`, code }
+    })
+    vi.mocked(tx.lockOrders).mockImplementation(async (ids) =>
+      ids.map((id) => ({ id, status: "Listo", activeRouteId: null })),
+    )
+    vi.mocked(tx.lockRouteForAssignment).mockResolvedValue({ status: "Aprobada" })
+    vi.mocked(tx.lockAvailableDriver).mockResolvedValue(true)
+    const vehicleCapacity = new Map<string, number>()
+    capacities.forEach((capacity, index) => vehicleCapacity.set(`vehicle-${index + 1}`, capacity))
+    vi.mocked(tx.lockAvailableVehicle).mockImplementation(async (id) => {
+      const capacityKg = vehicleCapacity.get(id)
+      return capacityKg === undefined ? null : { capacityKg }
+    })
+    vi.mocked(tx.routeWeight).mockImplementation(async (routeId) =>
+      weights[Number(routeId.split("-")[1]) - 1] ?? 0,
+    )
+    return tx
+  }
+
+  const plan = (n: number) => ({
+    orderIds: [`order-${n}`],
+    distanceKm: 10,
+    estimatedMinutes: 20,
+    estimatedLiters: 2,
+    estimatedCost: 12,
+    driverId: `driver-${n}`,
+    vehicleId: `vehicle-${n}`,
+  })
+
+  it("crea, aprueba y asigna R-001 y R-002 en una sola transacción sin tocar el stock", async () => {
+    const tx = batchTransaction([2000, 1500], [2000, 1500])
+    const repository = createRepository(tx)
+    const useCases = createRouteUseCases(repository)
+
+    const result = await useCases.createBatch({ routes: [plan(1), plan(2)], actorId: "dispatcher-1" })
+
+    expect(repository.transaction).toHaveBeenCalledTimes(1)
+    expect(result.map((route) => route.code)).toEqual(["R-001", "R-002"])
+    expect(tx.assignRoute).toHaveBeenCalledWith("route-1", "driver-1", "vehicle-1")
+    expect(tx.assignRoute).toHaveBeenCalledWith("route-2", "driver-2", "vehicle-2")
+    expect(tx.lockDeliveryStock).not.toHaveBeenCalled()
+    expect(tx.releaseStockReservation).not.toHaveBeenCalled()
+    expect(tx.applyDeliveryStock).not.toHaveBeenCalled()
+  })
+
+  it("rechaza el lote completo si un lote supera la capacidad de su vehículo", async () => {
+    const tx = batchTransaction([2000, 1800], [2000, 1500])
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await expect(
+      useCases.createBatch({ routes: [plan(1), plan(2)], actorId: "dispatcher-1" }),
+    ).rejects.toThrow("La carga supera la capacidad del vehículo")
+    expect(tx.assignRoute).toHaveBeenCalledTimes(1)
+  })
+
+  it("rechaza pedidos, vehículos o choferes repetidos entre rutas del lote", async () => {
+    const tx = batchTransaction([1, 1], [10, 10])
+    const repository = createRepository(tx)
+    const useCases = createRouteUseCases(repository)
+
+    await expect(useCases.createBatch({
+      routes: [plan(1), { ...plan(2), orderIds: ["order-1"] }],
+      actorId: "dispatcher-1",
+    })).rejects.toThrow("solo puede usarse en una ruta")
+    await expect(useCases.createBatch({
+      routes: [plan(1), { ...plan(2), vehicleId: "vehicle-1" }],
+      actorId: "dispatcher-1",
+    })).rejects.toThrow("solo puede usarse en una ruta")
+    expect(repository.transaction).not.toHaveBeenCalled()
+  })
+})
+
 describe("casos de uso de reparto", () => {
   it("valida pedidos, crea paradas y registra el cálculo del reparto", async () => {
     const tx = createTransaction()
@@ -194,6 +274,34 @@ describe("casos de uso de reparto", () => {
       .rejects.toMatchObject({ code: "CONFLICT" })
 
     expect(tx.assignRoute).not.toHaveBeenCalled()
+    expect(tx.setVehicleAvailable).not.toHaveBeenCalled()
+  })
+
+  it("cancelar una ruta Asignada la elimina y libera el vehículo y el chofer", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteForRemoval).mockResolvedValue({
+      code: "R-001", status: "Asignada", vehicleId: "vehicle-1",
+      distanceKm: 1, estimatedMinutes: 1, estimatedCost: 1,
+    })
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await useCases.remove("route-1", "dispatcher-1")
+
+    expect(tx.clearOrdersForRoute).toHaveBeenCalledWith("route-1")
+    expect(tx.deleteRoute).toHaveBeenCalledWith("route-1")
+    expect(tx.setVehicleAvailable).toHaveBeenCalledWith("vehicle-1", true)
+  })
+
+  it("no permite cancelar una ruta En curso", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteForRemoval).mockResolvedValue({
+      code: "R-001", status: "En curso", vehicleId: "vehicle-1",
+      distanceKm: 1, estimatedMinutes: 1, estimatedCost: 1,
+    })
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await expect(useCases.remove("route-1", "dispatcher-1")).rejects.toMatchObject({ code: "CONFLICT" })
+    expect(tx.deleteRoute).not.toHaveBeenCalled()
     expect(tx.setVehicleAvailable).not.toHaveBeenCalled()
   })
 

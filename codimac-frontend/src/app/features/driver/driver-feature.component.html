@@ -16,7 +16,11 @@
         <p class="mobile-eyebrow">RUTA ASIGNADA</p><h2>Buenos días, {{ state.userName() }}</h2>
         @if (remoteRoute(); as route) {
           <div class="mobile-route-card"><codimac-status [status]="route.status" /><strong>{{ route.code }}</strong><span>{{ route.route_stops.length }} paradas</span><div><codimac-icon name="truck" /><p>{{ route.vehicles?.vehicle_type }} {{ route.vehicles?.plate }}<small>Vehículo asignado</small></p></div></div>
-          <button class="button primary mobile-main" type="button" (click)="startRoute()">Iniciar reparto</button>
+          @if (route.status === "Asignada") {
+            <button class="button primary mobile-main" type="button" (click)="startRoute()">Iniciar reparto</button>
+          } @else {
+            <button class="button primary mobile-main" type="button" (click)="startRoute()">Continuar reparto</button>
+          }
         } @else {
           <p class="mobile-empty">No tienes una ruta asignada por ahora.</p>
         }
@@ -61,7 +65,7 @@
           <div class="delivery-guide"><p class="mobile-eyebrow">QUÉ HACER EN ESTA PARADA</p><div><span>1</span><p><strong>Verifica el pedido</strong><small>{{ remoteItemCount }} productos · {{ remoteUnitCount }} unidades</small></p></div><div><span>2</span><p><strong>Entrega y solicita el nombre</strong><small>Registra quién recibe el pedido</small></p></div><div><span>3</span><p><strong>Confirma o reporta un problema</strong><small>No cierres la parada sin registrar el resultado</small></p></div></div>
           <div class="mobile-products"><p class="mobile-eyebrow">PRODUCTOS A ENTREGAR</p>
             @for (item of stop.orders?.order_items ?? []; track $index) {
-              <div><span>{{ item.products.name }}<small>{{ item.products.unit }}</small></span><strong>{{ item.quantity }} {{ item.products.unit }}</strong></div>
+              <div><span>{{ item.products.name }}<small>{{ item.products.unit }}</small></span><strong>{{ item.quantity | numero }} {{ item.products.unit }}</strong></div>
             } @empty {
               <p>No hay productos asociados a esta parada.</p>
             }
@@ -76,7 +80,22 @@
         <label class="mobile-field">Observaciones<textarea placeholder="Opcional"></textarea></label>
         <button class="button primary mobile-main" type="button" (click)="confirmDelivery()">Confirmar</button>
       } @else if (screen() === 4) {
-        <div class="mobile-success"><div><codimac-icon name="check" [size]="31" /></div><h2>Entrega confirmada</h2><p>{{ receiver }} recibió el pedido.</p><button class="button primary mobile-main" type="button" (click)="screen.set(1); state.showToast('Consultando el estado de la ruta.')">Volver a la ruta</button></div>
+        <div class="mobile-success"><div><codimac-icon name="check" [size]="31" /></div><h2>Entrega confirmada</h2><p>{{ receiver }} recibió el pedido.</p>
+          @if (currentRemoteStop; as next) {
+            <div class="next-delivery-banner" role="status">
+              <p class="mobile-eyebrow">SIGUIENTE ENTREGA</p>
+              <strong>Siguiente entrega: {{ currentClientName }} · {{ currentClientAddress }}</strong>
+              <small>Parada {{ next.sequence_number }} de {{ remoteRoute()?.route_stops?.length }}</small>
+              <div class="next-delivery-actions">
+                @if (googleMapsDirectionsUrl; as directionsUrl) {
+                  <a class="button primary" [href]="directionsUrl" target="_blank" rel="noopener noreferrer"><codimac-icon name="route" [size]="16" /> Cómo llegar</a>
+                } @else {
+                  <button class="button primary" type="button" disabled><codimac-icon name="route" [size]="16" /> Cómo llegar</button>
+                }
+              </div>
+            </div>
+          }
+          <button class="button primary mobile-main" type="button" (click)="receiver = ''; screen.set(1); state.showToast('Consultando el estado de la ruta.')">Volver a la ruta</button></div>
       } @else if (screen() === 6) {
         @if (closedSummary(); as summary) {
           <p class="mobile-eyebrow">REPARTO COMPLETADO</p><h2>{{ summary.code }}</h2>

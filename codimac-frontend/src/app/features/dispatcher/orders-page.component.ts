@@ -3,6 +3,7 @@ import { DatePipe } from "@angular/common"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
+import { NumeroPipe } from "../../shared/numero.pipe"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { RemoteOrder } from "../../../lib/codimac-api"
 import { prioridadPorFechaLimite } from "../../../dominio/prioridad-pedido"
@@ -20,7 +21,7 @@ interface OrderRow {
 @Component({
   selector: "codimac-orders-page",
   standalone: true,
-  imports: [IconComponent, StatusBadgeComponent, DatePipe],
+  imports: [IconComponent, NumeroPipe, StatusBadgeComponent, DatePipe],
   templateUrl: "./orders-page.component.html",
 })
 export class OrdersPageComponent {
@@ -36,6 +37,7 @@ export class OrdersPageComponent {
     private readonly api: CodimacApiService,
   ) {
     effect(() => {
+      this.state.ordersRefresh()
       if (this.state.isOnline()) void this.reloadOrders()
     })
   }

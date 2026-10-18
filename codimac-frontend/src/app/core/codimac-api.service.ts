@@ -9,6 +9,7 @@ import {
   createCatalogRecord,
   createOrder,
   createRoute,
+  createRouteBatch,
   deliverStop,
   getDriverRoute,
   getDriverRouteSummary,
@@ -91,13 +92,19 @@ export class CodimacApiService {
     return createCatalogRecord(resource, value)
   }
 
-  createAdminUser(value: { name: string; email: string; password: string; role: string }): Promise<unknown> {
+  createAdminUser(value: {
+    name: string
+    email: string
+    password: string
+    role: string
+    phone?: string
+  }): Promise<unknown> {
     return createAdminUser(value)
   }
 
   updateAdminUser(
     id: string,
-    value: { name?: string; role?: string; active?: boolean; password?: string },
+    value: { name?: string; phone?: string | null; role?: string; active?: boolean; password?: string },
   ): Promise<unknown> {
     return updateAdminUser(id, value)
   }
@@ -160,6 +167,10 @@ export class CodimacApiService {
 
   createRoute(input: Parameters<typeof createRoute>[0]): ReturnType<typeof createRoute> {
     return createRoute(input)
+  }
+
+  createRouteBatch(input: Parameters<typeof createRouteBatch>[0]): ReturnType<typeof createRouteBatch> {
+    return createRouteBatch(input)
   }
 
   assignRoute(

@@ -52,6 +52,20 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
     res.json({ data: await useCases.listCatalog(req.params.resource) })
   })
 
+  router.post("/catalog/clients", requireRole("Despachador", "Administrador"), async (req, res) => {
+    const body = clientSchema.parse(req.body)
+    const data = await useCases.createCatalog("clients", body as CatalogRecord)
+    res.status(201).json({ data })
+  })
+
+  router.put("/catalog/clients/:id", requireRole("Despachador", "Administrador"), async (req, res) => {
+    const { id } = idParamSchema.parse(req.params)
+    const body = clientSchema.partial().parse(req.body)
+    if (!Object.keys(body).length) throw new HttpError(400, "No se indicaron campos para actualizar")
+    const data = await useCases.updateCatalog("clients", id, body as CatalogRecord)
+    res.json({ data })
+  })
+
   router.post("/admin/catalog/:resource", requireRole("Administrador"), async (req, res) => {
     if (!isCatalogResource(req.params.resource)) throw new HttpError(404, "Catálogo desconocido")
     const catalog = catalogs[req.params.resource]
@@ -102,6 +116,7 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
       email: z.email().transform((email) => email.toLowerCase()),
       password: z.string().min(10).max(128),
       name: z.string().trim().min(1).max(160),
+      phone: z.string().regex(/^9\d{8}$/, "El celular debe tener 9 dígitos y comenzar con 9.").nullable().optional(),
       role: z.enum(["Despachador", "Chofer", "Administrador"]),
     }).parse(req.body)
     const user = await useCases.createUser({ ...body, actorId: req.user!.id })
@@ -112,6 +127,7 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
     const { id } = idParamSchema.parse(req.params)
     const body = z.object({
       name: z.string().trim().min(1).max(160).optional(),
+      phone: z.string().regex(/^9\d{8}$/, "El celular debe tener 9 dígitos y comenzar con 9.").nullable().optional(),
       role: z.enum(["Despachador", "Chofer", "Administrador"]).optional(),
       active: z.boolean().optional(),
       password: z.string().min(10).max(128).optional(),

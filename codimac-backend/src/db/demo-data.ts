@@ -2,9 +2,9 @@ import type { PoolClient } from "pg"
 import { formatSequentialCode } from "../application/sequential-code.js"
 
 const demoUsers = [
-  { id: "90000000-0000-4000-8000-000000000001", email: "maria@codimac.pe", name: "María Quispe", role: "Despachador" },
-  { id: "90000000-0000-4000-8000-000000000002", email: "carlos@codimac.pe", name: "Carlos Quispe", role: "Chofer" },
-  { id: "90000000-0000-4000-8000-000000000003", email: "jose@codimac.pe", name: "José Ramírez", role: "Administrador" },
+  { id: "90000000-0000-4000-8000-000000000001", email: "maria@codimac.pe", name: "María Quispe", role: "Despachador", phone: null },
+  { id: "90000000-0000-4000-8000-000000000002", email: "carlos@codimac.pe", name: "Carlos Quispe", role: "Chofer", phone: "987654321" },
+  { id: "90000000-0000-4000-8000-000000000003", email: "jose@codimac.pe", name: "José Ramírez", role: "Administrador", phone: null },
 ] as const
 
 export async function loadDemoData(
@@ -13,9 +13,10 @@ export async function loadDemoData(
 ): Promise<void> {
   for (const user of demoUsers) {
     await client.query(
-      `INSERT INTO profiles(id,email,password_hash,display_name,role)
-       VALUES($1,$2,$3,$4,$5) ON CONFLICT(email) DO NOTHING`,
-      [user.id, user.email, await hashPassword("demostracion"), user.name, user.role],
+      `INSERT INTO profiles(id,email,password_hash,display_name,role,phone)
+       VALUES($1,$2,$3,$4,$5,$6)
+       ON CONFLICT(email) DO UPDATE SET phone=COALESCE(profiles.phone,EXCLUDED.phone)`,
+      [user.id, user.email, await hashPassword("demostracion"), user.name, user.role, user.phone],
     )
   }
 

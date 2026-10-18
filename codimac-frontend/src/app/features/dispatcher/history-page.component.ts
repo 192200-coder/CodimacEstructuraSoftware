@@ -4,13 +4,14 @@ import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import type { RemoteClosedRoute } from "../../../lib/codimac-api"
 import { IconComponent } from "../../shared/icon.component"
+import { NumeroPipe } from "../../shared/numero.pipe"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import { matchesCodeSearch } from "../../../dominio/busqueda-codigo"
 
 @Component({
   selector: "codimac-history-page",
   standalone: true,
-  imports: [DatePipe, IconComponent, StatusBadgeComponent],
+  imports: [DatePipe, IconComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./history-page.component.html",
 })
 export class HistoryPageComponent {

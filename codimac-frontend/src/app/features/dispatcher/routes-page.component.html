@@ -1,7 +1,7 @@
 <section class="card route-builder">
   <div class="flow-steps">
     @for (label of ["Seleccionar pedidos", "Comparar rutas", "Asignar recursos", "Monitorear"]; track label; let i = $index) {
-      <button type="button" [class.active]="i <= step()" [disabled]="!!routeId()" (click)="step.set(i)"><span>{{ i < step() ? "✓" : i + 1 }}</span>{{ label }}</button>
+      <button type="button" [class.active]="i <= step()" [disabled]="!canGoToStep(i)" [attr.title]="stepBlockedReason(i)" (click)="goToStep(i)"><span>{{ i < step() ? "✓" : i + 1 }}</span>{{ label }}</button>
     }
   </div>
   @if (step() === 0) {
@@ -14,7 +14,8 @@
               <span>{{ route.stop_count }}</span>
               <strong>{{ route.code }} · {{ route.driver_name ?? "Sin chofer" }} · {{ route.vehicle_plate ?? "Sin vehículo" }}</strong>
               <codimac-status [status]="route.status" />
-              <button class="button secondary" type="button" (click)="openMonitor(route)">Ver paradas</button>
+              <button class="button secondary" type="button" (click)="openMonitor(route)">Ver detalle</button>
+              @if (route.status === "Asignada") {<button class="button secondary" type="button" [disabled]="loading()" (click)="retirePendingRoute(route)">Cancelar ruta</button>}
             </article>
           }
         </section>
@@ -24,9 +25,21 @@
           <div class="flow-title"><div><p class="section-kicker">RUTAS SIN ASIGNAR</p><h2 id="pending-routes-title">Pendientes de asignar</h2></div></div>
           @for (route of pendingRoutes(); track route.id) {
             <article class="pending-route-row">
-              <div><strong>{{ route.code }}</strong><codimac-status [status]="route.status" /><span>{{ route.route_stops.map((stop) => stop.code + " · " + stop.client_name).join(", ") }}</span></div>
+              <div><strong>{{ route.code }}</strong><codimac-status [status]="route.status" /><span>{{ route.stop_count }} paradas · {{ route.weight_kg | numero }} kg · {{ route.route_stops.map((stop) => stop.code + " · " + stop.client_name).join(", ") }}</span></div>
               @if (route.status === "Calculada") {<button class="button primary" type="button" [disabled]="loading()" (click)="approveRecoveredRoute(route)">Aprobar ruta</button>}
-              <button class="button secondary" type="button" [disabled]="loading()" (click)="retirePendingRoute(route)">Retirar y liberar pedidos</button>
+              @if (route.status === "Aprobada") {<button class="button primary" type="button" [disabled]="loading()" (click)="assignRecoveredRoute(route)">Asignar recursos</button>}
+              <button class="button secondary" type="button" [disabled]="loading()" (click)="retirePendingRoute(route)">Cancelar ruta y liberar pedidos</button>
+            </article>
+          }
+        </section>
+      }
+      @if (closedRoutes().length) {
+        <section class="closed-route-list" aria-labelledby="closed-routes-title">
+          <div class="flow-title"><div><p class="section-kicker">HISTORIAL RECIENTE</p><h2 id="closed-routes-title">Repartos cerrados</h2></div></div>
+          @for (route of closedRoutes(); track route.id) {
+            <article class="pending-route-row">
+              <div><strong>{{ route.code }} · {{ route.driver_name ?? "Sin chofer" }} · {{ route.vehicle_plate ?? "Sin vehículo" }}</strong><codimac-status [status]="route.status" /><span>{{ route.stop_count }} paradas · {{ route.weight_kg | numero }} kg · {{ route.distance_km | numero }} km</span></div>
+              <button class="button secondary" type="button" (click)="openMonitor(route)">Ver detalle</button>
             </article>
           }
         </section>
@@ -37,8 +50,14 @@
       } @empty {
         <p>{{ loading() ? "Cargando pedidos…" : "No hay pedidos Listo disponibles. Registra un pedido, resérvalo y márcalo Listo para crear un reparto." }}</p>
       }
-      <div class="route-summary"><span>{{ selectedOrders.length }} pedidos</span><span>Se validará la carga al asignar vehículo</span><span>Máximo 10 paradas</span></div>
-      <button class="button primary flow-next" type="button" [disabled]="loading() || !selectedOrderIds().length" (click)="step.set(1)">Calcular ruta <codimac-icon name="arrow" [size]="16" /></button>
+      <div class="route-summary"><span>{{ selectedOrders.length }} pedidos</span><span>{{ formatKg(selectedWeightKg) }} kg de carga estimada</span><span>Máximo 10 paradas</span></div>
+      @if (needsSplit) {
+        <div class="alert warning split-banner" role="alert">
+          <strong>El peso total ({{ formatKg(selectedWeightKg) }} kg) supera la capacidad máxima. Sugerimos dividir la carga en {{ suggestedSplitCount }} vehículos/rutas.</strong>
+          <button class="button primary" type="button" [disabled]="loading()" (click)="openSplitAssistant()">Sugerir división por flota disponible</button>
+        </div>
+      }
+      <button class="button primary flow-next" type="button" [disabled]="loading() || !selectedOrderIds().length || selectedOrderIds().length > 10" [attr.title]="selectedOrderIds().length > 10 ? 'Una ruta admite hasta 10 paradas: usa la división de carga.' : null" (click)="step.set(1)">Calcular secuencia de reparto <codimac-icon name="arrow" [size]="16" /></button>
     </div>
   } @else if (step() === 1) {
     <div class="flow-body">
@@ -58,31 +77,100 @@
         </div>
       }
       @if (!alternativeRows.length) {<div class="alert warning"><strong>No hay alternativas</strong><span>Revisa las coordenadas, los parámetros de ruta y la disponibilidad del vehículo seleccionado.</span></div>}
-      <button class="button primary flow-next" type="button" [disabled]="loading() || !alternativeRows.length" (click)="approveRoute()">{{ loading() ? "Guardando…" : "Aprobar ruta " + (alternativeRows[selectedAlternative()]?.code ?? "") }}</button>
+      <button class="button primary flow-next" type="button" [disabled]="loading() || !alternativeRows.length" (click)="continueToAssignment()">Continuar a asignación de recursos <codimac-icon name="arrow" [size]="16" /></button>
     </div>
   } @else if (step() === 2) {
     <div class="flow-body">
       <div class="flow-title"><div><p class="section-kicker">{{ routeCode() || "NUEVA RUTA" }}</p><h2>Asignar chofer y vehículo</h2></div><codimac-status [status]="selectedOrderIds().length + ' paradas'" /></div>
       <div class="assignment-grid">
-        <div><p class="field-label">CHOFER DISPONIBLE</p>@for (driver of resources().drivers; track driver.id) {<label class="select-card" [class.selected]="selectedDriverId() === driver.id"><input type="radio" name="driver" [value]="driver.id" [checked]="selectedDriverId() === driver.id" (change)="selectedDriverId.set(driver.id)" /><span class="avatar">{{ driver.display_name?.split(" ").map((part) => part.slice(0, 1)).join("") }}</span><strong>{{ driver.display_name }}</strong><codimac-status status="Disponible" /></label>} @empty {<p>No hay choferes disponibles.</p>}</div>
-        <div><p class="field-label">VEHÍCULO</p>@for (vehicle of resources().vehicles; track vehicle.id) {<label class="select-card" [class.selected]="selectedVehicleId() === vehicle.id"><input type="radio" name="vehicle" [value]="vehicle.id" [checked]="selectedVehicleId() === vehicle.id" (change)="selectedVehicleId.set(vehicle.id)" /><codimac-icon name="truck" /><strong>{{ vehicle.vehicle_type }} {{ vehicle.plate }} · {{ vehicle.capacity_kg }} kg</strong></label>} @empty {<p>No hay vehículos disponibles.</p>}</div>
+        <div><p class="field-label">CHOFERES DISPONIBLES</p>@for (driver of resources().drivers; track driver.id) {<label class="select-card" [class.selected]="selectedDriverId() === driver.id"><input type="radio" name="driver" [value]="driver.id" [checked]="selectedDriverId() === driver.id" (change)="selectedDriverId.set(driver.id)" /><span class="avatar">{{ driver.display_name?.split(" ").map((part) => part.slice(0, 1)).join("") }}</span><strong>{{ driver.display_name }}<small>{{ driver.phone ?? "Celular no registrado" }}</small></strong><codimac-status status="Disponible" /></label>} @empty {<p>No hay choferes disponibles.</p>}</div>
+        <div><p class="field-label">VEHÍCULOS DISPONIBLES</p>@for (vehicle of resources().vehicles; track vehicle.id) {<label class="select-card" [class.selected]="selectedVehicleId() === vehicle.id"><input type="radio" name="vehicle" [value]="vehicle.id" [checked]="selectedVehicleId() === vehicle.id" (change)="selectedVehicleId.set(vehicle.id)" /><codimac-icon name="truck" /><strong>{{ vehicle.vehicle_type }} · {{ vehicle.plate }}<small>Capacidad {{ formatKg(vehicle.capacity_kg) }} kg · Reparto {{ formatKg(selectedWeightKg) }} kg</small></strong><codimac-status status="Disponible" /></label>} @empty {<p>No hay vehículos disponibles.</p>}</div>
       </div>
-      <div class="alert warning"><strong>Validación de capacidad</strong><span>{{ selectedWeightKg }} kg seleccionados · capacidad máxima {{ selectedVehicleCapacity ?? "—" }} kg.</span></div>
-      <button class="button primary flow-next" type="button" [disabled]="loading()" (click)="confirmAssignment()">{{ loading() ? "Asignando…" : "Confirmar asignación" }}</button>
+      @if (!resources().drivers.length) {<div class="alert warning" role="alert"><strong>Sin choferes</strong><span>No hay choferes disponibles para asignar a esta ruta.</span></div>}
+      @if (!selectedVehicleId()) {
+        <div class="alert warning" role="status"><strong>Validación de capacidad</strong><span>{{ formatKg(selectedWeightKg) }} kg seleccionados · elige un vehículo para validar la carga.</span></div>
+      } @else {
+        <div class="alert" [class.error]="capacityExceeded" [class.success]="!capacityExceeded" role="status"><strong>{{ capacityExceeded ? "Capacidad insuficiente" : "Carga válida" }}</strong><span>{{ formatKg(selectedWeightKg) }} kg seleccionados · capacidad del vehículo {{ formatKg(selectedVehicleCapacity) }} kg.</span></div>
+      }
+      @if (needsSplit && !routeId()) {
+        <div class="alert warning split-banner" role="alert">
+          <strong>El peso total ({{ formatKg(selectedWeightKg) }} kg) supera la capacidad máxima. Sugerimos dividir la carga en {{ suggestedSplitCount }} vehículos/rutas.</strong>
+          <button class="button primary" type="button" [disabled]="loading()" (click)="openSplitAssistant()">Sugerir división por flota disponible</button>
+        </div>
+      }
+      <button class="button primary flow-next" type="button" [disabled]="!canAssignRoute" (click)="confirmAssignment()">{{ loading() ? "Guardando…" : routeStatus() === "Aprobada" ? "Confirmar asignación" : routeId() ? "Reintentar aprobación y asignación" : "Aprobar, crear y asignar ruta" }}</button>
       @if (routeId()) {<button class="button secondary" type="button" [disabled]="loading()" (click)="cancelPendingRoute()">Retirar reparto sin asignar</button>}
+    </div>
+  } @else if (step() === 4) {
+    <div class="flow-body split-body">
+      <div class="flow-title"><div><p class="section-kicker">CARGA EXCEDENTE</p><h2>Dividir carga en {{ splitGroups().length }} {{ splitGroups().length === 1 ? "ruta" : "rutas" }}</h2></div><codimac-status [status]="formatKg(selectedWeightKg) + ' kg totales'" /></div>
+      <div class="split-actions">
+        <button class="button secondary split-suggest" type="button" (click)="suggestSplit()"><codimac-icon name="route" [size]="16" /> Sugerir división por flota disponible</button>
+        <button class="button secondary" type="button" [disabled]="!canAddSplitGroup" (click)="addSplitGroup()"><codimac-icon name="plus" [size]="16" /> Agregar ruta</button>
+      </div>
+      @if (unassignedSplitOrders.length) {
+        <section class="split-drawer" aria-label="Pedidos sin asignar">
+          <div class="split-drawer-banner" role="status"><strong>Sin asignar ({{ unassignedSplitOrders.length }} · {{ formatKg(unassignedWeightKg) }} kg)</strong><span>Estos pedidos seguirán en Listo con su reserva intacta si no los asignas.</span></div>
+          @for (order of unassignedSplitOrders; track order.id) {
+            @if (oversizedOrderIds.has(order.id)) {<p class="alert error" role="alert">El pedido {{ order.code }} supera la capacidad máxima de cualquier vehículo de la flota.</p>}
+          }
+          <div class="split-pills">
+            @for (order of unassignedSplitOrders; track order.id) {
+              <div class="split-pill" [class.oversized]="oversizedOrderIds.has(order.id)">
+                <span class="split-pill-code">{{ order.code }}</span>
+                <span class="split-pill-meta">{{ calcularPeso(order) }} kg · {{ order.clients?.name }}</span>
+                <select class="input-select split-move" [attr.aria-label]="'Ruta para ' + order.code" (change)="reassignOrder(order.id, $any($event.target).value); $any($event.target).value = '0'"><option value="0" selected>Sin asignar</option>@for (group of splitGroups(); track group.key; let n = $index) {<option [value]="group.key">Ruta {{ n + 1 }}</option>}<option value="new">Nueva ruta</option></select>
+              </div>
+            }
+          </div>
+        </section>
+      }
+      <div class="split-groups">
+        @for (group of splitGroups(); track group.key; let n = $index) {
+          <section class="route-card" [class.over]="groupExceeded(group)" [attr.aria-label]="'Ruta ' + (n + 1)">
+            <header class="route-card-head">
+              <strong class="route-card-title">Ruta {{ n + 1 }}</strong>
+              <span class="weight-pill" [class.over]="groupExceeded(group)">{{ formatKg(groupWeight(group)) }} kg acumulados</span>
+              <button class="split-remove" type="button" (click)="removeSplitGroup(group.key)">Quitar</button>
+            </header>
+            <div class="split-selects">
+              <label>Vehículo<select class="input-select" [value]="group.vehicleId" (change)="setGroupVehicle(group.key, $any($event.target).value)">@for (vehicle of resources().vehicles; track vehicle.id) {<option [value]="vehicle.id" [selected]="vehicle.id === group.vehicleId">{{ vehicle.vehicle_type }} · {{ vehicle.plate }} · {{ formatKg(vehicle.capacity_kg) }} kg</option>}</select></label>
+              <label>Chofer<select class="input-select" [value]="group.driverId" (change)="setGroupDriver(group.key, $any($event.target).value)"><option value="" [selected]="!group.driverId">Elegir chofer…</option>@for (driver of resources().drivers; track driver.id) {<option [value]="driver.id" [selected]="driver.id === group.driverId">{{ driver.display_name }} · {{ driver.phone ?? "sin celular" }}</option>}</select></label>
+            </div>
+            <div class="fill-bar" role="progressbar" [attr.aria-valuenow]="groupFill(group)" aria-valuemin="0" aria-valuemax="100" [attr.aria-label]="'Llenado de la ruta ' + (n + 1)">
+              <div [class.over]="groupExceeded(group)" [style.width.%]="groupFill(group) > 100 ? 100 : groupFill(group)"></div>
+            </div>
+            <p class="fill-caption"><span>{{ groupFill(group) }}%</span><strong>{{ formatKg(groupWeight(group)) }} / {{ formatKg(groupCapacity(group)) }} kg</strong></p>
+            @if (groupExceeded(group)) {<p class="field-error" role="alert">La carga supera la capacidad del vehículo. Mueve pedidos a otra ruta.</p>}
+            @for (order of groupOrders(group); track order.id) {
+              <div class="split-order"><span><strong>{{ order.code }}</strong> · {{ order.clients?.name }}</span><b class="split-order-weight">{{ calcularPeso(order) }} kg</b>
+                <select class="input-select split-move" [attr.aria-label]="'Mover ' + order.code" (change)="reassignOrder(order.id, $any($event.target).value)"><option [value]="group.key" selected>Ruta {{ n + 1 }}</option>@for (other of splitGroups(); track other.key; let m = $index) {@if (other.key !== group.key) {<option [value]="other.key">Ruta {{ m + 1 }}</option>}}<option value="0">Sin asignar</option><option value="new">Nueva ruta</option></select>
+              </div>
+            } @empty {<p class="split-empty">Sin pedidos en esta ruta.</p>}
+          </section>
+        }
+      </div>
+      <div class="split-footer">
+        <button class="button secondary btn-secondary" type="button" [disabled]="loading()" (click)="step.set(0)">Volver a la selección</button>
+        <button class="button primary split-create" type="button" [disabled]="!canCreateSplit" [attr.title]="splitBlocker || null" (click)="createSplitRoutes()">{{ loading() ? "Guardando…" : "Crear y Aprobar Rutas (" + activeSplitGroups.length + " rutas)" }}</button>
+      </div>
     </div>
   } @else {
     <div class="flow-body monitor-body">
       <div class="assignment-notice sent">
         <div><codimac-icon name="check" [size]="17" /></div>
-        <p><strong>Reparto {{ routeCode() }} asignado</strong><span>La asignación se registró. No se envió un aviso al chofer porque no hay un proveedor de notificaciones configurado.</span></p>
-        <span class="notice-actions"><button type="button" (click)="notifyDriver()">Ver estado del aviso</button></span>
+        <p><strong>Reparto {{ monitoredRoute()?.code ?? routeCode() }} · {{ monitoredRoute()?.status ?? routeStatus() }}</strong><span>{{ monitoredRoute()?.status === "Cerrada" ? "Todas las paradas quedaron resueltas y el vehículo está disponible nuevamente." : monitoredRoute()?.status === "En curso" ? "El chofer inició la ruta; las paradas y estados se actualizan automáticamente." : "La ruta está asignada. El chofer puede iniciar el reparto desde su vista móvil." }}</span></p>
+        @if (monitoredRoute()?.status === "Asignada") {<span class="notice-actions"><button type="button" (click)="notifyDriver()">Ver estado del aviso</button></span>}
       </div>
       <div class="flow-title"><div><p class="section-kicker">MONITOREO DEL REPARTO</p><h2>{{ monitoredRoute()?.code ?? routeCode() }} · {{ monitoredRoute()?.stop_count ?? selectedOrderIds().length }} paradas</h2></div><codimac-status [status]="monitoredRoute()?.status ?? 'Asignada'" /></div>
       <div class="monitor-grid">
         <div>
           @for (stop of monitoredRoute()?.route_stops ?? []; track stop.id) {<div class="monitor-stop"><span>{{ stop.sequence_number }}</span><strong>{{ stop.code }} · {{ stop.client_name }} · {{ stop.status }}</strong>@if (stop.eta_at) {<small>ETA {{ stop.eta_at | date:"shortTime":"America/Lima" }}</small>}</div>}
-          <div class="route-kpis"><b>{{ alternativeRows[selectedAlternative()]?.distance ?? "—" }}<small>previstos</small></b><b>{{ alternativeRows[selectedAlternative()]?.time ?? "—" }}<small>estimados</small></b><b>{{ alternativeRows[selectedAlternative()]?.cost ?? "—" }}<small>combustible</small></b></div>
+          <div class="route-kpis">
+            <b>{{ monitoredRoute() ? (monitoredRoute()!.distance_km | numero) + " km" : (alternativeRows[selectedAlternative()]?.distance ?? "—") }}<small>distancia</small></b>
+            <b>{{ monitoredRoute() ? (monitoredRoute()!.estimated_minutes | numero:0) + " min" : (alternativeRows[selectedAlternative()]?.time ?? "—") }}<small>tiempo estimado</small></b>
+            <b>{{ monitoredRoute() ? (monitoredRoute()!.estimated_liters | numero:2:2) + " L" : "—" }}<small>combustible</small></b>
+          </div>
         </div>
         <button class="button secondary" type="button" (click)="startNewRoute()">Volver a repartos activos</button>
       </div>

@@ -7,9 +7,9 @@
       <button class="client-back-link" type="button" (click)="returnToLogin()">← Volver</button>
     </div>
     @if (!found()) {
-      <div class="lookup"><p class="mobile-eyebrow">SEGUIMIENTO DE PEDIDOS</p><h2>Consulta tu entrega</h2><p>Ingresa el código del pedido y confirma tu identidad con los últimos cuatro dígitos del teléfono registrado.</p>
-        <label class="mobile-field">Código del pedido<input autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="80" [value]="code()" (input)="updateCode($event)" placeholder="PED-0001" /></label>
-        <label class="mobile-field">Últimos cuatro dígitos del teléfono<input type="text" inputmode="numeric" autocomplete="off" maxlength="4" [value]="lastFourDigits()" (input)="updateLastFourDigits($event)" placeholder="1234" /></label>
+      <div class="lookup lookup-card"><p class="mobile-eyebrow">SEGUIMIENTO DE PEDIDOS</p><h2>Consulta tu entrega</h2><p>Ingresa el código del pedido y confirma tu identidad con los últimos cuatro dígitos del teléfono registrado.</p>
+        <label class="mobile-field tracking-lookup-field">Código del pedido<div class="tracking-input-wrap"><codimac-icon name="box" [size]="18" /><input aria-label="Código del pedido" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="80" [value]="code()" (input)="updateCode($event)" placeholder="PED-0001" /></div></label>
+        <label class="mobile-field tracking-lookup-field">Últimos 4 dígitos del teléfono<div class="tracking-input-wrap"><codimac-icon name="phone" [size]="18" /><input aria-label="Últimos 4 dígitos del teléfono" type="text" inputmode="numeric" autocomplete="off" maxlength="4" [value]="lastFourDigits()" (input)="updateLastFourDigits($event)" placeholder="1234" /></div></label>
         @if (error()) { <p class="tracking-error" role="alert">{{ error() }}</p> }
         <button class="button primary mobile-main" type="button" [disabled]="loading()" (click)="consult()">{{ loading() ? "Consultando…" : "Consultar" }}</button>
         <small>Por seguridad, ambos datos deben coincidir con el pedido. No necesitas crear una cuenta.</small>

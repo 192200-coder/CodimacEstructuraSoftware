@@ -27,6 +27,11 @@ export interface CreateRouteInput {
   actorId: string
 }
 
+export interface CreateRouteBatchInput {
+  routes: Array<Omit<CreateRouteInput, "actorId"> & { driverId: string; vehicleId: string }>
+  actorId: string
+}
+
 export interface RouteOrder {
   id: string
   status: string
@@ -90,6 +95,7 @@ export interface RouteTransaction {
   lockRouteForRemoval(routeId: string): Promise<{
     code: string
     status: string
+    vehicleId: string | null
     distanceKm: number
     estimatedMinutes: number
     estimatedCost: number
@@ -168,6 +174,7 @@ export interface RouteRepository extends RouteReadRepository {
 
 export interface RouteUseCases {
   create(input: CreateRouteInput): Promise<{ id: string; code: string; status: "Calculada" }>
+  createBatch(input: CreateRouteBatchInput): Promise<Array<{ id: string; code: string; status: "Asignada" }>>
   approve(routeId: string, actorId: string): Promise<void>
   remove(routeId: string, actorId: string): Promise<void>
   assign(routeId: string, driverId: string, vehicleId: string, actorId: string): Promise<void>
@@ -322,85 +329,118 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
     })
   }
 
+  async function createInTransaction(tx: RouteTransaction, input: CreateRouteInput) {
+    if (!isWithinRouteLimit(input.orderIds.length)) {
+      throw new ApplicationError("VALIDATION_ERROR", "La ruta debe tener entre 1 y 10 paradas")
+    }
+    const orders = await tx.lockOrders(input.orderIds)
+    if (orders.length !== input.orderIds.length) {
+      throw new ApplicationError("NOT_FOUND", "Uno o más pedidos no existen")
+    }
+    if (orders.some((order) => order.status !== "Listo" || order.activeRouteId)) {
+      throw new ApplicationError("CONFLICT", "Todos los pedidos deben estar Listo y sin reparto activo")
+    }
+    const code = formatSequentialCode("R", await tx.nextRouteSequence())
+    const route = await tx.insertRoute({
+      code,
+      status: "Calculada",
+      distanceKm: input.distanceKm,
+      estimatedMinutes: input.estimatedMinutes,
+      estimatedLiters: input.estimatedLiters,
+      estimatedCost: input.estimatedCost,
+      actorId: input.actorId,
+    })
+    await tx.insertRouteStops(route.id, input.orderIds)
+    await tx.setOrdersActiveRoute(input.orderIds, route.id)
+    await tx.insertStatusEvent({
+      entityType: "Ruta",
+      entityId: route.id,
+      newStatus: "Calculada",
+      actorId: input.actorId,
+      routeId: route.id,
+    })
+    await registrarEventoAuditoria(tx.audit, {
+      usuarioId: input.actorId,
+      accion: "Cálculo de reparto",
+      entidad: "Ruta",
+      entidadId: route.id,
+      valorAnterior: null,
+      valorNuevo: { codigo: code, estado: "Calculada", pedidos: input.orderIds },
+    })
+    return {
+      id: route.id,
+      code: route.code,
+      status: "Calculada" as const,
+    }
+  }
+
+  async function approveInTransaction(tx: RouteTransaction, routeId: string, actorId: string) {
+    const route = await tx.lockRouteForApproval(routeId)
+    if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
+    const nextStatus = requireRouteTransition(route.status, "Aprobada")
+    if (!(await tx.updateRouteStatus(routeId, nextStatus))) {
+      throw new ApplicationError("CONFLICT", "No se pudo aprobar el reparto")
+    }
+    await tx.insertStatusEvent({
+      entityType: "Ruta",
+      entityId: routeId,
+      previousStatus: route.status,
+      newStatus: nextStatus,
+      actorId,
+      routeId,
+    })
+    await registrarEventoAuditoria(tx.audit, {
+      usuarioId: actorId,
+      accion: "Aprobación de reparto",
+      entidad: "Ruta",
+      entidadId: routeId,
+      valorAnterior: { estado: route.status },
+      valorNuevo: { estado: nextStatus },
+    })
+  }
+
   return {
-    async create(input) {
-      if (!isWithinRouteLimit(input.orderIds.length)) {
-        throw new ApplicationError("VALIDATION_ERROR", "La ruta debe tener entre 1 y 10 paradas")
+    create(input) {
+      return repository.transaction((tx) => createInTransaction(tx, input))
+    },
+    async createBatch(input) {
+      if (!input.routes.length) {
+        throw new ApplicationError("VALIDATION_ERROR", "Indica al menos una ruta")
       }
+      const orderIds = input.routes.flatMap((route) => route.orderIds)
+      const vehicleIds = input.routes.map((route) => route.vehicleId)
+      const driverIds = input.routes.map((route) => route.driverId)
+      if (
+        new Set(orderIds).size !== orderIds.length ||
+        new Set(vehicleIds).size !== vehicleIds.length ||
+        new Set(driverIds).size !== driverIds.length
+      ) {
+        throw new ApplicationError(
+          "VALIDATION_ERROR",
+          "Cada pedido, vehículo y chofer solo puede usarse en una ruta del lote",
+        )
+      }
+      // Una sola transacción: si una ruta falla (p. ej. capacidad), no se crea ninguna.
       return repository.transaction(async (tx) => {
-        const orders = await tx.lockOrders(input.orderIds)
-        if (orders.length !== input.orderIds.length) {
-          throw new ApplicationError("NOT_FOUND", "Uno o más pedidos no existen")
+        const created: Array<{ id: string; code: string; status: "Asignada" }> = []
+        for (const plan of input.routes) {
+          const route = await createInTransaction(tx, { ...plan, actorId: input.actorId })
+          await approveInTransaction(tx, route.id, input.actorId)
+          await assignInTransaction(tx, route.id, plan.driverId, plan.vehicleId, input.actorId)
+          created.push({ id: route.id, code: route.code, status: "Asignada" })
         }
-        if (orders.some((order) => order.status !== "Listo" || order.activeRouteId)) {
-          throw new ApplicationError("CONFLICT", "Todos los pedidos deben estar Listo y sin reparto activo")
-        }
-        const code = formatSequentialCode("R", await tx.nextRouteSequence())
-        const route = await tx.insertRoute({
-          code,
-          status: "Calculada",
-          distanceKm: input.distanceKm,
-          estimatedMinutes: input.estimatedMinutes,
-          estimatedLiters: input.estimatedLiters,
-          estimatedCost: input.estimatedCost,
-          actorId: input.actorId,
-        })
-        await tx.insertRouteStops(route.id, input.orderIds)
-        await tx.setOrdersActiveRoute(input.orderIds, route.id)
-        await tx.insertStatusEvent({
-          entityType: "Ruta",
-          entityId: route.id,
-          newStatus: "Calculada",
-          actorId: input.actorId,
-          routeId: route.id,
-        })
-        await registrarEventoAuditoria(tx.audit, {
-          usuarioId: input.actorId,
-          accion: "Cálculo de reparto",
-          entidad: "Ruta",
-          entidadId: route.id,
-          valorAnterior: null,
-          valorNuevo: { codigo: code, estado: "Calculada", pedidos: input.orderIds },
-        })
-        return {
-          id: route.id,
-          code: route.code,
-          status: "Calculada" as const,
-        }
+        return created
       })
     },
     async approve(routeId, actorId) {
-      await repository.transaction(async (tx) => {
-        const route = await tx.lockRouteForApproval(routeId)
-        if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
-        const nextStatus = requireRouteTransition(route.status, "Aprobada")
-        if (!(await tx.updateRouteStatus(routeId, nextStatus))) {
-          throw new ApplicationError("CONFLICT", "No se pudo aprobar el reparto")
-        }
-        await tx.insertStatusEvent({
-          entityType: "Ruta",
-          entityId: routeId,
-          previousStatus: route.status,
-          newStatus: nextStatus,
-          actorId,
-          routeId,
-        })
-        await registrarEventoAuditoria(tx.audit, {
-          usuarioId: actorId,
-          accion: "Aprobación de reparto",
-          entidad: "Ruta",
-          entidadId: routeId,
-          valorAnterior: { estado: route.status },
-          valorNuevo: { estado: nextStatus },
-        })
-      })
+      await repository.transaction((tx) => approveInTransaction(tx, routeId, actorId))
     },
     async remove(routeId, actorId) {
       await repository.transaction(async (tx) => {
         const route = await tx.lockRouteForRemoval(routeId)
         if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
-        if (route.status !== "Calculada" && route.status !== "Aprobada") {
-          throw new ApplicationError("CONFLICT", "Solo se puede retirar un reparto sin asignar")
+        if (!["Calculada", "Aprobada", "Asignada"].includes(route.status)) {
+          throw new ApplicationError("CONFLICT", "Solo se puede cancelar un reparto que aún no inició")
         }
         await registrarEventoAuditoria(tx.audit, {
           usuarioId: actorId,
@@ -420,6 +460,10 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
         await tx.deleteRouteStatusEvents(routeId)
         await tx.deleteRouteStops(routeId)
         await tx.deleteRoute(routeId)
+        // El chofer queda libre al desaparecer la ruta; el vehículo se libera explícitamente.
+        if (route.status === "Asignada" && route.vehicleId) {
+          await tx.setVehicleAvailable(route.vehicleId, true)
+        }
       })
     },
     async assign(routeId, driverId, vehicleId, actorId) {

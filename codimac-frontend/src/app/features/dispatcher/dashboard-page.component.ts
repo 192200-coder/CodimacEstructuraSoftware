@@ -25,6 +25,7 @@ export class DashboardPageComponent {
     private readonly api: CodimacApiService,
   ) {
     effect(() => {
+      this.state.ordersRefresh()
       if (this.state.isOnline()) void this.loadDashboard()
     })
   }

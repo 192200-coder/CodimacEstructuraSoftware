@@ -1,30 +1,31 @@
-<section class="card module-card">
-  <nav class="filterbar" aria-label="Secciones de inventario">
-    <div class="filterbar">
+<section class="card module-card inventory-page">
+  <div class="inventory-page-toolbar">
+    <nav class="inventory-tabs" aria-label="Secciones de inventario">
       <button class="button" [class.secondary]="activeTab() !== 'stock'" [attr.aria-current]="activeTab() === 'stock' ? 'page' : null" type="button" (click)="showStock()">Existencias</button>
       <button class="button" [class.secondary]="activeTab() !== 'movements'" [attr.aria-current]="activeTab() === 'movements' ? 'page' : null" type="button" (click)="showMovements()">Movimientos</button>
-    </div>
+    </nav>
     @if (activeTab() === "stock") {
-      <div class="filterbar">
+      <div class="inventory-actions">
         <div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar producto" placeholder="Buscar producto" [value]="search()" (input)="setSearch($event)" /></div>
         <button class="button primary" type="button" (click)="state.action('Panel de entrada de inventario abierto')"><codimac-icon name="plus" [size]="17" /> Registrar entrada</button>
       </div>
     }
-  </nav>
+  </div>
   @if (activeTab() === "stock") {
-    <div class="inventory-summary"><div><span>Valor de inventario</span><strong>No disponible</strong></div><div><span>Unidades reservadas</span><strong>{{ reservedUnits }}</strong></div><div><span>Productos sin stock</span><strong class="warning-text">{{ outOfStockCount }}</strong></div></div>
+    <div class="inventory-summary"><div><span>Valor de inventario</span><strong>No disponible</strong></div><div><span>Unidades reservadas</span><strong>{{ reservedUnits | numero }}</strong></div><div><span>Productos sin stock</span><strong class="warning-text">{{ outOfStockCount }}</strong></div></div>
     <div class="table-wrap">
       <table><thead><tr><th>Producto</th><th>Unidad</th><th>Existencias</th><th>Reservadas</th><th>Disponibles</th><th>Estado</th><th></th></tr></thead>
-        <tbody>@for (product of products; track product.id) {<tr><td><strong>{{ product.name }}</strong></td><td>{{ product.unit }}</td><td>{{ product.total }}</td><td>{{ product.reserved }}</td><td><strong>{{ product.available }}</strong></td><td><codimac-status [status]="product.available <= 0 ? 'Sin stock' : 'Disponible'" /></td><td><button class="button secondary" type="button" (click)="showMovements(product.id)">Movimientos</button></td></tr>} @empty {<tr><td colspan="7">{{ remoteLoaded() ? "No hay productos registrados." : "Cargando inventario…" }}</td></tr>}</tbody>
+        <tbody>@for (product of products; track product.id) {<tr><td><strong>{{ product.name }}</strong></td><td>{{ product.unit }}</td><td>{{ product.total | numero }}</td><td>{{ product.reserved | numero }}</td><td><strong>{{ product.available | numero }}</strong></td><td><codimac-status [status]="product.available <= 0 ? 'Sin stock' : 'Disponible'" /></td><td><button class="button secondary" type="button" (click)="showMovements(product.id)">Movimientos</button></td></tr>} @empty {<tr><td colspan="7">{{ remoteLoaded() ? "No hay productos registrados." : "Cargando inventario…" }}</td></tr>}</tbody>
       </table>
     </div>
     <button class="button secondary adjust-button" type="button" (click)="state.action('Formulario de ajuste de existencias abierto')">Ajustar existencias</button>
   } @else {
-    <div class="card-header"><div><p class="section-kicker">HISTORIAL DE INVENTARIO</p><h2>{{ selectedProduct?.name ?? "Selecciona un producto" }}</h2></div></div>
+    <div class="card-header"><div><p class="section-kicker">HISTORIAL DE INVENTARIO</p><h2>{{ selectedProduct?.name ?? "Selecciona un producto" }}</h2></div>
+      <label class="movement-select">Producto<select class="input-select" [value]="selectedProductId()" (change)="selectMovementProduct($event)">@for (product of products; track product.id) {<option [value]="product.id" [selected]="product.id === selectedProductId()">{{ product.name }}</option>}</select></label></div>
     @if (selectedProductId()) {
       <div class="table-wrap">
         <table><thead><tr><th>Fecha y hora</th><th>Tipo</th><th>Cantidad</th><th>Usuario</th><th>Pedido</th><th>Motivo / detalle</th></tr></thead>
-          <tbody>@for (movement of movements(); track movement.id) {<tr><td>{{ movement.fecha_hora | date:"short":"America/Lima" }}</td><td>{{ movement.tipo }}</td><td>{{ movement.cantidad }}</td><td>{{ movement.usuario }}</td><td>{{ movement.pedido_codigo ?? "—" }}</td><td>{{ movement.motivo ?? movement.observation ?? "—" }}{{ movement.detalle ? " · " + movement.detalle : "" }}</td></tr>} @empty {<tr><td colspan="6">{{ movementsLoaded() ? "No hay movimientos para este producto." : "Cargando movimientos…" }}</td></tr>}</tbody>
+          <tbody>@for (movement of movements(); track movement.id) {<tr><td>{{ movement.fecha_hora | date:"short":"America/Lima" }}</td><td><span class="movement-type" [attr.data-tipo]="movement.tipo">{{ movement.tipo }}</span></td><td>{{ movement.cantidad | numero }}</td><td>{{ movement.usuario }}</td><td>{{ movement.pedido_codigo ?? "—" }}</td><td>{{ movement.motivo ?? movement.observation ?? "—" }}{{ movement.detalle ? " · " + movement.detalle : "" }}</td></tr>} @empty {<tr><td colspan="6">{{ movementsLoaded() ? "No hay movimientos para este producto." : "Cargando movimientos…" }}</td></tr>}</tbody>
         </table>
       </div>
     } @else {

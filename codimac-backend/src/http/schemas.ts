@@ -57,6 +57,17 @@ export const clientSchema = z.object({
   latitude: z.coerce.number().min(-90).max(90),
   longitude: z.coerce.number().min(-180).max(180),
 }).strict()
+export const createRouteBatchSchema = z.object({
+  routes: z.array(z.object({
+    orderIds: z.array(uuidSchema).min(1).max(10),
+    distanceKm: z.number().nonnegative().finite(),
+    estimatedMinutes: z.number().int().nonnegative(),
+    estimatedLiters: z.number().nonnegative().finite(),
+    estimatedCost: z.number().nonnegative().finite(),
+    driverId: uuidSchema,
+    vehicleId: uuidSchema,
+  }).strict()).min(1).max(10),
+}).strict()
 export const createRouteSchema = z.object({
   orderIds: z.array(uuidSchema).min(1).max(10),
   distanceKm: z.number().nonnegative().finite(),

@@ -6,7 +6,7 @@ const DEFAULT_CENTER: L.LatLngExpression = [-13.6366, -72.8814]
 export class LeafletUbicacionMapa implements PuertoUbicacionMapa {
   async initialize(
     container: HTMLElement,
-    _addressInput: HTMLInputElement,
+    addressInput: HTMLInputElement,
     initial: CoordenadasMapa | null,
     onChange: CambioUbicacionMapa,
   ): Promise<() => void> {
@@ -26,6 +26,41 @@ export class LeafletUbicacionMapa implements PuertoUbicacionMapa {
       iconAnchor: [14, 14],
     })
     let marker: L.Marker | null = null
+    let lookupSequence = 0
+    const addressInputListener = () => {
+      lookupSequence += 1
+    }
+    addressInput.addEventListener("input", addressInputListener)
+    const reverseGeocode = async (latitude: number, longitude: number) => {
+      const coordinates = { latitude, longitude }
+      const sequence = ++lookupSequence
+      onChange(coordinates, "")
+      try {
+        const query = new URLSearchParams({
+          format: "jsonv2",
+          lat: String(latitude),
+          lon: String(longitude),
+          "accept-language": "es",
+        })
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${query}`)
+        if (!response.ok) throw new Error(`Geocodificación OSM respondió HTTP ${response.status}.`)
+        const result = await response.json() as { display_name?: unknown }
+        if (sequence !== lookupSequence) return
+        if (typeof result.display_name !== "string" || !result.display_name) {
+          throw new Error("OpenStreetMap no encontró una dirección para esta ubicación.")
+        }
+        onChange(coordinates, result.display_name)
+      } catch (error) {
+        if (sequence !== lookupSequence) return
+        onChange(
+          coordinates,
+          undefined,
+          error instanceof Error
+            ? `${error.message} Puedes escribir la dirección manualmente.`
+            : "No se pudo obtener la dirección de esta ubicación. Puedes escribirla manualmente.",
+        )
+      }
+    }
     const setLocation = (latitude: number, longitude: number) => {
       marker?.remove()
       marker = L.marker([latitude, longitude], {
@@ -34,9 +69,9 @@ export class LeafletUbicacionMapa implements PuertoUbicacionMapa {
       }).addTo(map)
       marker.on("dragend", () => {
         const location = marker?.getLatLng()
-        if (location) onChange({ latitude: location.lat, longitude: location.lng })
+        if (location) void reverseGeocode(location.lat, location.lng)
       })
-      onChange({ latitude, longitude })
+      void reverseGeocode(latitude, longitude)
     }
 
     map.on("click", (event: L.LeafletMouseEvent) => {
@@ -49,10 +84,13 @@ export class LeafletUbicacionMapa implements PuertoUbicacionMapa {
       }).addTo(map)
       marker.on("dragend", () => {
         const location = marker?.getLatLng()
-        if (location) onChange({ latitude: location.lat, longitude: location.lng })
+        if (location) void reverseGeocode(location.lat, location.lng)
       })
     }
 
-    return () => map.remove()
+    return () => {
+      addressInput.removeEventListener("input", addressInputListener)
+      map.remove()
+    }
   }
 }

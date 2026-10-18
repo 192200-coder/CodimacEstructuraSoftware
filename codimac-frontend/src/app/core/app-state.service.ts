@@ -19,6 +19,7 @@ export class AppStateService {
   readonly dialog = signal<DialogKind | null>(null)
   readonly inventoryRefresh = signal(0)
   readonly catalogRefresh = signal(0)
+  readonly ordersRefresh = signal(0)
 
   private toastTimer: number | undefined
 

@@ -21,6 +21,7 @@ export interface CatalogUser {
   id: string
   email: string
   display_name: string
+  phone?: string | null
   role: CatalogRole
   active: boolean
   created_at: string
@@ -29,6 +30,7 @@ export interface CatalogUser {
 export interface CatalogUserSnapshot {
   email: string
   display_name: string
+  phone?: string | null
   role: CatalogRole
   active: boolean
 }
@@ -41,11 +43,13 @@ export interface CatalogTransaction {
     email: string
     passwordHash: string
     name: string
+    phone: string | null
     role: CatalogRole
   }): Promise<CatalogUser>
   lockUser(userId: string): Promise<CatalogUserSnapshot | null>
   updateUser(userId: string, update: {
     name?: string
+    phone?: string | null
     role?: CatalogRole
     active?: boolean
     passwordHash?: string
@@ -107,6 +111,7 @@ export interface CatalogUseCases {
     email: string
     password: string
     name: string
+    phone?: string | null
     role: CatalogRole
     actorId: string
   }): Promise<CatalogUser>
@@ -115,6 +120,7 @@ export interface CatalogUseCases {
     actorId: string
     actorRole: CatalogRole
     name?: string
+    phone?: string | null
     role?: CatalogRole
     active?: boolean
     password?: string
@@ -207,6 +213,7 @@ export function createCatalogUseCases(
           email: input.email,
           passwordHash,
           name: input.name,
+          phone: input.phone ?? null,
           role: input.role,
         })
         await registrarEventoAuditoria(tx.audit, {
@@ -218,6 +225,7 @@ export function createCatalogUseCases(
           valorNuevo: {
             correo: user.email,
             nombre: user.display_name,
+            celular: user.phone,
             rol: user.role,
             activo: user.active,
           },
@@ -243,6 +251,7 @@ export function createCatalogUseCases(
         if (!before) throw new ApplicationError("NOT_FOUND", "Usuario no encontrado")
         const user = await tx.updateUser(input.userId, {
           name: input.name,
+          phone: input.phone,
           role: input.role,
           active: input.active,
           passwordHash,
@@ -250,6 +259,7 @@ export function createCatalogUseCases(
         const snapshot = (row: CatalogUserSnapshot) => ({
           correo: row.email,
           nombre: row.display_name,
+          celular: row.phone,
           rol: row.role,
           activo: row.active,
         })
