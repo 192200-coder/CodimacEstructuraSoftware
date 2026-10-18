@@ -173,7 +173,7 @@ class PostgresCatalogTransaction implements CatalogTransaction {
 
   async hasActiveRouteForVehicle(vehicleId: string): Promise<boolean> {
     const result = await this.client.query(
-      "SELECT 1 FROM routes WHERE vehicle_id=$1 AND status IN ('Asignada','En ruta') LIMIT 1",
+      "SELECT 1 FROM routes WHERE vehicle_id=$1 AND status IN ('Asignada','En curso') LIMIT 1",
       [vehicleId],
     )
     return Boolean(result.rowCount)

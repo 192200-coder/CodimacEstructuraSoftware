@@ -384,6 +384,10 @@ export async function createRoute(input: {
   return request("/routes", { method: "POST", body: JSON.stringify(input) })
 }
 
+export async function approveRoute(id: string): Promise<{ status: string }> {
+  return request(`/routes/${encodeURIComponent(id)}/approve`, { method: "POST" })
+}
+
 export async function assignRoute(id: string, driverId: string, vehicleId: string) {
   return request(`/routes/${id}/assign`, {
     method: "POST",

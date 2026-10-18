@@ -1,6 +1,7 @@
 import { Injectable } from "@angular/core"
 import {
   assignRoute,
+  approveRoute,
   adjustInventory,
   cancelOrder,
   cancelPendingRoute,
@@ -167,6 +168,10 @@ export class CodimacApiService {
     vehicleId: string,
   ): Promise<unknown> {
     return assignRoute(id, driverId, vehicleId)
+  }
+
+  approveRoute(id: string): Promise<{ status: string }> {
+    return approveRoute(id)
   }
 
   cancelPendingRoute(id: string): Promise<unknown> {

@@ -93,9 +93,11 @@ export class RoutesPageComponent implements OnDestroy {
 
   private async refreshMonitoredRoute(): Promise<void> {
     const routes = await this.api.getRoutes()
-    this.pendingRoutes.set(routes.filter((route) => route.status === "Aprobada"))
+    this.pendingRoutes.set(routes.filter((route) =>
+      route.status === "Calculada" || route.status === "Aprobada",
+    ))
     this.activeRoutes.set(
-      routes.filter((route) => route.status === "Asignada" || route.status === "En ruta"),
+      routes.filter((route) => route.status === "Asignada" || route.status === "En curso"),
     )
     const route = routes.find((item) => item.id === this.routeId()) ?? null
     this.monitoredRoute.set(route)
@@ -288,8 +290,36 @@ export class RoutesPageComponent implements OnDestroy {
       return
     }
     this.selectedOrderIds.set(alternative.orderIds)
-    this.state.showToast(`Alternativa de ruta seleccionada con criterio ${this.criterion()}.`)
-    this.step.set(2)
+    this.loading.set(true)
+    try {
+      if (!this.routeId()) {
+        const result = await this.api.createRoute({
+          orderIds: alternative.orderIds,
+          distanceKm: alternative.distanceKm,
+          estimatedMinutes: alternative.estimatedMinutes,
+          estimatedLiters: alternative.estimatedLiters,
+          estimatedCost: alternative.estimatedCost,
+        })
+        this.routeId.set(result.routeId)
+        this.routeCode.set(result.code)
+        this.plannedVehicleId.set(this.selectedVehicleId())
+      }
+      await this.api.approveRoute(this.routeId())
+      this.state.showToast(`Reparto ${this.routeCode()} aprobado. Ahora asigna chofer y vehículo.`)
+      this.step.set(2)
+    } catch (error) {
+      this.state.showToast(error instanceof Error ? error.message : "No se pudo aprobar el reparto.")
+      return
+    } finally {
+      this.loading.set(false)
+    }
+    try {
+      await this.refreshMonitoredRoute()
+    } catch (error) {
+      this.state.showToast(error instanceof Error
+        ? `El reparto se aprobó, pero no se pudo actualizar la lista: ${error.message}`
+        : "El reparto se aprobó, pero no se pudo actualizar la lista.")
+    }
   }
 
   async confirmAssignment(): Promise<void> {
@@ -314,22 +344,9 @@ export class RoutesPageComponent implements OnDestroy {
     this.loading.set(true)
     try {
       if (!this.routeId()) {
-        this.selectedOrderIds.set(alternative.orderIds)
-        const result = await this.api.createRoute({
-          orderIds: alternative.orderIds,
-          distanceKm: alternative.distanceKm,
-          estimatedMinutes: alternative.estimatedMinutes,
-          estimatedLiters: alternative.estimatedLiters,
-          estimatedCost: alternative.estimatedCost,
-          driverId: this.selectedDriverId(),
-          vehicleId: this.selectedVehicleId(),
-        })
-        this.routeId.set(result.routeId)
-        this.routeCode.set(result.code)
-        this.plannedVehicleId.set(this.selectedVehicleId())
-      } else {
-        await this.api.assignRoute(this.routeId(), this.selectedDriverId(), this.selectedVehicleId())
+        throw new Error("Aprueba primero la ruta calculada.")
       }
+      await this.api.assignRoute(this.routeId(), this.selectedDriverId(), this.selectedVehicleId())
     } catch (error) {
       this.state.showToast(error instanceof Error ? error.message : "No se pudo asignar el reparto.")
       return
@@ -384,6 +401,19 @@ export class RoutesPageComponent implements OnDestroy {
           ? `No se pudo retirar el reparto: ${error.message}`
           : "No se pudo retirar el reparto.",
       )
+    } finally {
+      this.loading.set(false)
+    }
+  }
+
+  async approveRecoveredRoute(route: RemoteRouteSummary): Promise<void> {
+    this.loading.set(true)
+    try {
+      await this.api.approveRoute(route.id)
+      await this.loadRouteData()
+      this.state.showToast(`Reparto ${route.code} aprobado.`)
+    } catch (error) {
+      this.state.showToast(error instanceof Error ? error.message : "No se pudo aprobar el reparto.")
     } finally {
       this.loading.set(false)
     }

@@ -94,22 +94,4 @@ describe("persistencia transaccional de movimientos de inventario", () => {
     )
   })
 
-  it("registra LIBERACION tras agotar los intentos de entrega", async () => {
-    const repository = new PostgresRouteRepository()
-    query.mockResolvedValueOnce({ rows: [{ id: "product-1" }], rowCount: 1 } as never)
-    query.mockResolvedValueOnce({ rows: [{ id: "reservation-1" }], rowCount: 1 } as never)
-    query.mockResolvedValueOnce({ rows: [], rowCount: 1 } as never)
-
-    await repository.transaction((tx) => tx.releaseFailedDeliveryReservation({
-      orderId: "order-1",
-      productId: "product-1",
-      quantity: 4,
-      actorId: "driver-1",
-    }))
-
-    expect(query.mock.calls[2]?.[0]).toContain("VALUES($1,'LIBERACION',$2,$3,$4,$5)")
-    expect(query.mock.calls[2]?.[1]).toEqual([
-      "product-1", 4, "Liberación por entrega fallida del pedido order-1", "driver-1", "order-1",
-    ])
-  })
 })

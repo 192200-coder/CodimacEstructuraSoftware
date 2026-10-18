@@ -61,13 +61,13 @@ Todas las rutas (excepto salud, login y seguimiento público) usan
 - `POST /api/inventory/:productId/movements`
 - `GET /api/inventory/:productId/movements` lists the product's chronological
   inventory movements (dispatcher or administrator)
-- `POST /api/routes` creates a route; when `driverId` and `vehicleId` are
-  included, route creation and resource assignment are committed atomically
+- `POST /api/routes` creates a route in `Calculada`; `POST /api/routes/:id/approve`
+  explicitly approves it before assignment
 - `GET /api/routes/history` lists only closed operational routes for dispatchers
   and administrators; it reads routes, stops, drivers, and vehicles, never
   audit events or legacy generic messages
 - `POST /api/routes/:id/assign|start`
-- `DELETE /api/routes/:id` retires an unassigned approved route and releases its orders
+- `DELETE /api/routes/:id` retires an unassigned calculated or approved route and releases its orders
 - `POST /api/admin/demo-data` idempotently adds missing demo fixtures (administrator only)
 - `GET /api/driver/route`
 - `POST /api/stops/:id/deliver|incidents`
@@ -97,6 +97,14 @@ los movimientos existentes, normaliza sus tipos a `ENTRADA`, `AJUSTE`,
 `RESERVA`, `LIBERACION` y `SALIDA`, y añade el vínculo opcional al pedido.
 Entradas, ajustes, reservas, liberaciones y salidas quedan dentro de la misma
 transacción que modifica el stock o completa la operación correspondiente.
+
+Las rutas usan la máquina de estados `Calculada → Aprobada → Asignada →
+En curso → Cerrada`. `POST /api/routes/:id/approve` registra la aprobación
+explícita; un trigger PostgreSQL bloquea saltos de estado y cualquier
+reactivación después del cierre. La ruta se cierra dentro de la transacción
+que marca la última parada como `Entregada` o `No entregada`. Los dos intentos
+de entrega se limitan por parada: tras el segundo fallo, el pedido vuelve a
+`Listo` y conserva su reserva.
 
 Los eventos de auditoría se registran desde los casos de uso y se escriben en la
 misma transacción que la operación correspondiente. La migración

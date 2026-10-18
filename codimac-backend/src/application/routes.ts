@@ -1,4 +1,10 @@
-import { nextIncident, isWithinRouteLimit } from "../domain/rules.js"
+import {
+  canTransitionRouteStatus,
+  nextIncident,
+  isWithinRouteLimit,
+  transitionRouteStatus,
+  type RouteStatus,
+} from "../domain/rules.js"
 import {
   estimateStopArrivals,
   orderOpenStops,
@@ -18,8 +24,6 @@ export interface CreateRouteInput {
   estimatedMinutes: number
   estimatedLiters: number
   estimatedCost: number
-  driverId?: string
-  vehicleId?: string
   actorId: string
 }
 
@@ -63,6 +67,7 @@ export interface RouteTransaction {
   nextRouteSequence(): Promise<number>
   insertRoute(input: {
     code: string
+    status: "Calculada"
     distanceKm: number
     estimatedMinutes: number
     estimatedLiters: number
@@ -89,6 +94,8 @@ export interface RouteTransaction {
     estimatedMinutes: number
     estimatedCost: number
   } | null>
+  lockRouteForApproval(routeId: string): Promise<{ status: string } | null>
+  updateRouteStatus(routeId: string, status: RouteStatus): Promise<boolean>
   deleteRouteStatusEvents(routeId: string): Promise<void>
   deleteRouteStops(routeId: string): Promise<void>
   deleteRoute(routeId: string): Promise<void>
@@ -104,7 +111,7 @@ export interface RouteTransaction {
 
   lockRouteForStart(routeId: string): Promise<{ status: string; driverId: string } | null>
   lockFirstStop(routeId: string): Promise<{ id: string; orderId: string } | null>
-  startRoute(routeId: string): Promise<void>
+  startRoute(routeId: string, status: RouteStatus): Promise<boolean>
   updateStopStatus(stopId: string, status: string): Promise<void>
   lockRouteOrders(routeId: string): Promise<RouteOrder[]>
   updateOrderStatus(orderId: string, status: string, activeRouteId?: string | null): Promise<void>
@@ -131,13 +138,6 @@ export interface RouteTransaction {
     orderId: string
     actorId: string
   }): Promise<void>
-  releaseFailedDeliveryReservation(input: {
-    productId: string
-    quantity: number
-    orderId: string
-    actorId: string
-  }): Promise<void>
-
   lockStopForIncident(stopId: string): Promise<StopForDelivery | null>
   insertIncident(stopId: string, cause: string, notes: string | null, actorId: string): Promise<void>
   updateStopIncident(stopId: string, status: string, attempts: number): Promise<void>
@@ -151,6 +151,7 @@ export interface RouteTransaction {
   } | null>
   activateStop(stopId: string, orderId: string, routeId: string): Promise<void>
   hasUnresolvedStops(routeId: string): Promise<boolean>
+  lockRouteForClosure(routeId: string): Promise<{ status: string } | null>
   closeRoute(routeId: string): Promise<{ vehicleId: string } | null>
 }
 
@@ -166,7 +167,8 @@ export interface RouteRepository extends RouteReadRepository {
 }
 
 export interface RouteUseCases {
-  create(input: CreateRouteInput): Promise<{ id: string; code: string; status: "Aprobada" | "Asignada" }>
+  create(input: CreateRouteInput): Promise<{ id: string; code: string; status: "Calculada" }>
+  approve(routeId: string, actorId: string): Promise<void>
   remove(routeId: string, actorId: string): Promise<void>
   assign(routeId: string, driverId: string, vehicleId: string, actorId: string): Promise<void>
   start(routeId: string, actorId: string): Promise<void>
@@ -184,6 +186,16 @@ export interface RouteUseCases {
 }
 
 export function createRouteUseCases(repository: RouteRepository): RouteUseCases {
+  function requireRouteTransition(current: string, next: RouteStatus): RouteStatus {
+    if (!canTransitionRouteStatus(current, next)) {
+      throw new ApplicationError(
+        "CONFLICT",
+        `No se permite cambiar el estado de la ruta de ${current} a ${next}`,
+      )
+    }
+    return transitionRouteStatus(current as RouteStatus, next)
+  }
+
   async function assignInTransaction(
     tx: RouteTransaction,
     routeId: string,
@@ -193,9 +205,7 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
   ): Promise<void> {
     const route = await tx.lockRouteForAssignment(routeId)
     if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
-    if (route.status !== "Aprobada") {
-      throw new ApplicationError("CONFLICT", "La ruta debe estar Aprobada")
-    }
+    requireRouteTransition(route.status, "Asignada")
     if (!(await tx.lockAvailableDriver(driverId))) {
       throw new ApplicationError("CONFLICT", "El chofer no está disponible")
     }
@@ -285,14 +295,18 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
       return
     }
     if (await tx.hasUnresolvedStops(routeId)) return
+    const route = await tx.lockRouteForClosure(routeId)
+    if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
+    if (route.status === "Cerrada") return
+    requireRouteTransition(route.status, "Cerrada")
     const closed = await tx.closeRoute(routeId)
-    if (!closed) return
+    if (!closed) throw new ApplicationError("CONFLICT", "No se pudo cerrar el reparto")
     await tx.clearOrdersForRoute(routeId)
     await tx.setVehicleAvailable(closed.vehicleId, true)
     await tx.insertStatusEvent({
       entityType: "Ruta",
       entityId: routeId,
-      previousStatus: "En ruta",
+      previousStatus: "En curso",
       newStatus: "Cerrada",
       actorId,
       routeId,
@@ -303,7 +317,7 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
       accion: "Cambio de estado",
       entidad: "Ruta",
       entidadId: routeId,
-      valorAnterior: { estado: "En ruta" },
+      valorAnterior: { estado: "En curso" },
       valorNuevo: { estado: "Cerrada" },
     })
   }
@@ -322,40 +336,71 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
           throw new ApplicationError("CONFLICT", "Todos los pedidos deben estar Listo y sin reparto activo")
         }
         const code = formatSequentialCode("R", await tx.nextRouteSequence())
-        const route = await tx.insertRoute({ ...input, code })
+        const route = await tx.insertRoute({
+          code,
+          status: "Calculada",
+          distanceKm: input.distanceKm,
+          estimatedMinutes: input.estimatedMinutes,
+          estimatedLiters: input.estimatedLiters,
+          estimatedCost: input.estimatedCost,
+          actorId: input.actorId,
+        })
         await tx.insertRouteStops(route.id, input.orderIds)
         await tx.setOrdersActiveRoute(input.orderIds, route.id)
         await tx.insertStatusEvent({
           entityType: "Ruta",
           entityId: route.id,
-          newStatus: "Aprobada",
+          newStatus: "Calculada",
           actorId: input.actorId,
           routeId: route.id,
         })
         await registrarEventoAuditoria(tx.audit, {
           usuarioId: input.actorId,
-          accion: "Aprobación de reparto",
+          accion: "Cálculo de reparto",
           entidad: "Ruta",
           entidadId: route.id,
           valorAnterior: null,
-          valorNuevo: { codigo: code, estado: "Aprobada", pedidos: input.orderIds },
+          valorNuevo: { codigo: code, estado: "Calculada", pedidos: input.orderIds },
         })
-        if (input.driverId && input.vehicleId) {
-          await assignInTransaction(tx, route.id, input.driverId, input.vehicleId, input.actorId)
-        }
         return {
           id: route.id,
           code: route.code,
-          status: input.driverId ? "Asignada" as const : "Aprobada" as const,
+          status: "Calculada" as const,
         }
+      })
+    },
+    async approve(routeId, actorId) {
+      await repository.transaction(async (tx) => {
+        const route = await tx.lockRouteForApproval(routeId)
+        if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
+        const nextStatus = requireRouteTransition(route.status, "Aprobada")
+        if (!(await tx.updateRouteStatus(routeId, nextStatus))) {
+          throw new ApplicationError("CONFLICT", "No se pudo aprobar el reparto")
+        }
+        await tx.insertStatusEvent({
+          entityType: "Ruta",
+          entityId: routeId,
+          previousStatus: route.status,
+          newStatus: nextStatus,
+          actorId,
+          routeId,
+        })
+        await registrarEventoAuditoria(tx.audit, {
+          usuarioId: actorId,
+          accion: "Aprobación de reparto",
+          entidad: "Ruta",
+          entidadId: routeId,
+          valorAnterior: { estado: route.status },
+          valorNuevo: { estado: nextStatus },
+        })
       })
     },
     async remove(routeId, actorId) {
       await repository.transaction(async (tx) => {
         const route = await tx.lockRouteForRemoval(routeId)
         if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
-        if (route.status !== "Aprobada") {
-          throw new ApplicationError("CONFLICT", "Solo se puede retirar un reparto todavía no asignado")
+        if (route.status !== "Calculada" && route.status !== "Aprobada") {
+          throw new ApplicationError("CONFLICT", "Solo se puede retirar un reparto sin asignar")
         }
         await registrarEventoAuditoria(tx.audit, {
           usuarioId: actorId,
@@ -389,9 +434,12 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
         if (route.driverId !== actorId || route.status !== "Asignada") {
           throw new ApplicationError("CONFLICT", "La ruta no está asignada a este chofer")
         }
+        const routeStatus = requireRouteTransition(route.status, "En curso")
         const firstStop = await tx.lockFirstStop(routeId)
         if (!firstStop) throw new ApplicationError("CONFLICT", "El reparto no tiene paradas")
-        await tx.startRoute(routeId)
+        if (!(await tx.startRoute(routeId, routeStatus))) {
+          throw new ApplicationError("CONFLICT", "No se pudo iniciar el reparto")
+        }
         await tx.updateStopStatus(firstStop.id, "En camino")
         const orders = await tx.lockRouteOrders(routeId)
         for (const order of orders) {
@@ -412,7 +460,7 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
           entityType: "Ruta",
           entityId: routeId,
           previousStatus: "Asignada",
-          newStatus: "En ruta",
+          newStatus: "En curso",
           actorId,
           routeId,
         })
@@ -422,7 +470,7 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
           entidad: "Ruta",
           entidadId: routeId,
           valorAnterior: { estado: "Asignada" },
-          valorNuevo: { estado: "En ruta" },
+          valorNuevo: { estado: "En curso" },
         })
         await registrarEventoAuditoria(tx.audit, {
           usuarioId: actorId,
@@ -449,7 +497,7 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
       await repository.transaction(async (tx) => {
         const stop = await tx.lockStopForDelivery(stopId)
         if (!stop) throw new ApplicationError("NOT_FOUND", "Parada no encontrada")
-        if (stop.driverId !== actorId || stop.routeStatus !== "En ruta" || stop.status !== "En camino") {
+        if (stop.driverId !== actorId || stop.routeStatus !== "En curso" || stop.status !== "En camino") {
           throw new ApplicationError("CONFLICT", "La parada no pertenece a una ruta activa del chofer")
         }
         await tx.markStopDelivered(stopId, receivedBy)
@@ -526,43 +574,15 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
       return repository.transaction(async (tx) => {
         const stop = await tx.lockStopForIncident(stopId)
         if (!stop) throw new ApplicationError("NOT_FOUND", "Parada no encontrada")
-        if (stop.driverId !== actorId || stop.routeStatus !== "En ruta" || stop.status !== "En camino") {
+        if (stop.driverId !== actorId || stop.routeStatus !== "En curso" || stop.status !== "En camino") {
           throw new ApplicationError("CONFLICT", "La parada no pertenece a una ruta activa del chofer")
         }
-        await tx.insertIncident(stopId, cause, notes, actorId)
         const incident = nextIncident(stop.attempts)
+        await tx.insertIncident(stopId, cause, notes, actorId)
         await tx.updateStopIncident(stopId, incident.status, incident.attempts)
         if (incident.status === "No entregada") {
           await tx.closeOpenIncidents(stopId)
           await tx.updateOrderStatus(stop.orderId, "Listo", null)
-          const stockItems = await tx.lockDeliveryStock(stop.orderId)
-          for (const item of stockItems) {
-            if (item.reserved === null || item.reserved < item.quantity) {
-              throw new ApplicationError("CONFLICT", "No hay reserva de stock activa para liberar")
-            }
-            await tx.releaseFailedDeliveryReservation({
-              productId: item.productId,
-              quantity: item.quantity,
-              orderId: stop.orderId,
-              actorId,
-            })
-            await registrarEventoAuditoria(tx.audit, {
-              usuarioId: actorId,
-              accion: "Liberación de reserva por entrega fallida",
-              entidad: "Inventario",
-              entidadId: item.productId,
-              valorAnterior: {
-                existencias: item.totalStock,
-                reservadas: item.reservedStock,
-                pedidoId: stop.orderId,
-                cantidad: item.quantity,
-              },
-              valorNuevo: {
-                existencias: item.totalStock,
-                reservadas: item.reservedStock - item.quantity,
-              },
-            })
-          }
           await tx.insertStatusEvent({
             entityType: "Pedido",
             entityId: stop.orderId,

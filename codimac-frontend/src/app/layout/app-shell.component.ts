@@ -52,7 +52,7 @@ export class AppShellComponent implements OnDestroy {
     if (notification.new_status === "Incidencia") return "Incidencia registrada"
     if (notification.entity_type === "Ruta") {
       if (notification.new_status === "Asignada") return "Reparto asignado"
-      if (notification.new_status === "En ruta") return "Reparto en ruta"
+      if (notification.new_status === "En curso") return "Reparto en curso"
       if (notification.new_status === "Cerrada") return "Reparto cerrado"
       if (notification.new_status === "Aprobada") return "Reparto aprobado"
       return `Reparto ${notification.new_status.toLocaleLowerCase("es-PE")}`

@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest"
-import { availableStock, canAdjustStock, hasAvailableStock, isWithinRouteLimit, nextIncident } from "./rules.js"
+import {
+  availableStock,
+  canAdjustStock,
+  hasAvailableStock,
+  isWithinRouteLimit,
+  nextIncident,
+  transitionRouteStatus,
+  type RouteStatus,
+} from "./rules.js"
 
 describe("reglas de inventario", () => {
   it("solo reserva existencias disponibles y cantidades positivas", () => {
@@ -27,6 +35,34 @@ describe("reglas de entrega y reparto", () => {
   it("reprograma una vez y marca no entregada al segundo intento", () => {
     expect(nextIncident(0)).toEqual({ attempts: 1, status: "Incidencia" })
     expect(nextIncident(1)).toEqual({ attempts: 2, status: "No entregada" })
-    expect(nextIncident(2)).toEqual({ attempts: 2, status: "No entregada" })
+  })
+
+  it("no permite un tercer intento ni valores inválidos", () => {
+    expect(() => nextIncident(2)).toThrow("máximo dos intentos")
+    expect(() => nextIncident(-1)).toThrow("máximo dos intentos")
+    expect(() => nextIncident(1.5)).toThrow("máximo dos intentos")
+  })
+
+  it.each([
+    ["Calculada", "Aprobada"],
+    ["Aprobada", "Asignada"],
+    ["Asignada", "En curso"],
+    ["En curso", "Cerrada"],
+  ] as const)("permite transición de ruta %s → %s", (current, next) => {
+    expect(transitionRouteStatus(current, next)).toBe(next)
+  })
+
+  it.each([
+    ["Calculada", "Asignada"],
+    ["Calculada", "Cerrada"],
+    ["Aprobada", "En curso"],
+    ["Asignada", "Aprobada"],
+    ["En curso", "Asignada"],
+    ["Cerrada", "En curso"],
+    ["Cerrada", "Cerrada"],
+  ] as const)("rechaza transición de ruta %s → %s", (current, next) => {
+    expect(() => transitionRouteStatus(current as RouteStatus, next as RouteStatus)).toThrow(
+      "Transición de ruta inválida",
+    )
   })
 })

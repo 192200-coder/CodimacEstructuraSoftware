@@ -85,12 +85,12 @@ describe("contrato de creación de repartos", () => {
     })
   })
 
-  it("exige chofer y vehículo juntos para crear y asignar en una sola operación", () => {
+  it("rechaza la asignación embebida para mantener la aprobación como transición explícita", () => {
     expect(createRouteSchema.safeParse({
       ...validRoute,
       driverId: "90000000-0000-4000-8000-000000000002",
       vehicleId: "30000000-0000-4000-8000-000000000001",
-    }).success).toBe(true)
+    }).success).toBe(false)
     expect(createRouteSchema.safeParse({
       ...validRoute,
       driverId: "90000000-0000-4000-8000-000000000002",

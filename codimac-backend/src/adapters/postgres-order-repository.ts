@@ -163,7 +163,7 @@ class PostgresOrderTransaction implements OrderRepositoryTransaction {
           )
         }
         await this.client.query(
-          "UPDATE routes SET status='Aprobada',driver_id=NULL,vehicle_id=NULL,updated_at=now() WHERE id=$1",
+          "UPDATE routes SET driver_id=NULL,vehicle_id=NULL,updated_at=now() WHERE id=$1",
           [routeId],
         )
       }

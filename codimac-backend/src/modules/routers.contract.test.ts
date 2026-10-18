@@ -26,7 +26,8 @@ let baseUrl: string
 
 function createRouteUseCasesMock(): RouteUseCases {
   return {
-    create: vi.fn(async () => ({ id: "route-1", code: "R-001", status: "Aprobada" as const })),
+    create: vi.fn(async () => ({ id: "route-1", code: "R-001", status: "Calculada" as const })),
+    approve: vi.fn(async () => undefined),
     remove: vi.fn(async () => undefined),
     assign: vi.fn(async () => undefined),
     start: vi.fn(async () => undefined),
@@ -149,8 +150,17 @@ describe("contratos HTTP de los routers refactorizados", () => {
     expect(await response.json()).toEqual({
       routeId: "route-1",
       code: "R-001",
-      status: "Aprobada",
+      status: "Calculada",
     })
+  })
+
+  it("ofrece una transición HTTP explícita de Calculada a Aprobada", async () => {
+    const response = await fetch(`${baseUrl}/api/routes/50000000-0000-4000-8000-000000000001/approve`, {
+      method: "POST",
+    })
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ status: "Aprobada" })
   })
 
   it("acepta una entrada de inventario sin motivo y con observación opcional", async () => {

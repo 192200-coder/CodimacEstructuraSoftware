@@ -21,10 +21,11 @@
       }
       @if (pendingRoutes().length) {
         <section class="pending-route-list" aria-labelledby="pending-routes-title">
-          <div class="flow-title"><div><p class="section-kicker">RUTAS SIN ASIGNAR</p><h2 id="pending-routes-title">Pendientes de recuperar</h2></div></div>
+          <div class="flow-title"><div><p class="section-kicker">RUTAS SIN ASIGNAR</p><h2 id="pending-routes-title">Pendientes de asignar</h2></div></div>
           @for (route of pendingRoutes(); track route.id) {
             <article class="pending-route-row">
-              <div><strong>{{ route.code }}</strong><span>{{ route.route_stops.map((stop) => stop.code + " · " + stop.client_name).join(", ") }}</span></div>
+              <div><strong>{{ route.code }}</strong><codimac-status [status]="route.status" /><span>{{ route.route_stops.map((stop) => stop.code + " · " + stop.client_name).join(", ") }}</span></div>
+              @if (route.status === "Calculada") {<button class="button primary" type="button" [disabled]="loading()" (click)="approveRecoveredRoute(route)">Aprobar ruta</button>}
               <button class="button secondary" type="button" [disabled]="loading()" (click)="retirePendingRoute(route)">Retirar y liberar pedidos</button>
             </article>
           }

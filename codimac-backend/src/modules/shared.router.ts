@@ -52,7 +52,7 @@ sharedRouter.get("/resources", async (_req, res) => {
       `SELECT p.id,p.display_name FROM profiles p
        WHERE p.role='Chofer' AND p.active=true
          AND NOT EXISTS (
-           SELECT 1 FROM routes r WHERE r.driver_id=p.id AND r.status IN ('Asignada','En ruta')
+           SELECT 1 FROM routes r WHERE r.driver_id=p.id AND r.status IN ('Asignada','En curso')
          )
        ORDER BY p.display_name`,
     ),
@@ -60,7 +60,7 @@ sharedRouter.get("/resources", async (_req, res) => {
       `SELECT v.* FROM vehicles v
        WHERE v.available=true
          AND NOT EXISTS (
-           SELECT 1 FROM routes r WHERE r.vehicle_id=v.id AND r.status IN ('Asignada','En ruta')
+           SELECT 1 FROM routes r WHERE r.vehicle_id=v.id AND r.status IN ('Asignada','En curso')
          )
        ORDER BY v.plate`,
     ),

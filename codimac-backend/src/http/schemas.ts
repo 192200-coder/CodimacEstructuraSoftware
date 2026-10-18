@@ -63,10 +63,6 @@ export const createRouteSchema = z.object({
   estimatedMinutes: z.number().int().nonnegative(),
   estimatedLiters: z.number().nonnegative().finite(),
   estimatedCost: z.number().nonnegative().finite(),
-  driverId: uuidSchema.optional(),
-  vehicleId: uuidSchema.optional(),
 }).refine((value) => new Set(value.orderIds).size === value.orderIds.length, {
   message: "No se permiten pedidos duplicados",
-}).refine((value) => Boolean(value.driverId) === Boolean(value.vehicleId), {
-  message: "Chofer y vehículo deben enviarse juntos para asignar la ruta",
-})
+}).strict()

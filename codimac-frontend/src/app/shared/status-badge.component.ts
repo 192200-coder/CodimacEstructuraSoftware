@@ -19,6 +19,8 @@ export class StatusBadgeComponent {
     "En camino": { className: "route-status", icon: "truck" },
     "En ruta": { className: "route-status", icon: "truck" },
     Asignada: { className: "route-status", icon: "truck" },
+    Calculada: { className: "pending", icon: "clock" },
+    "En curso": { className: "route-status", icon: "truck" },
     Entregado: { className: "delivered", icon: "checkCheck" },
     Entregada: { className: "delivered", icon: "checkCheck" },
     Cerrada: { className: "delivered", icon: "checkCheck" },

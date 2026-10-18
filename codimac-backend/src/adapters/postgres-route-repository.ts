@@ -1,5 +1,6 @@
 import { inTransaction, pool } from "../db/pool.js"
 import type { Coordinates, OpenStop } from "../domain/routing.js"
+import type { RouteStatus } from "../domain/rules.js"
 import type {
   DeliveryStockLine,
   RouteOrder,
@@ -39,6 +40,7 @@ class PostgresRouteTransaction implements RouteTransaction {
 
   async insertRoute(input: {
     code: string
+    status: "Calculada"
     distanceKm: number
     estimatedMinutes: number
     estimatedLiters: number
@@ -47,9 +49,10 @@ class PostgresRouteTransaction implements RouteTransaction {
   }): Promise<{ id: string; code: string }> {
     const result = await this.client.query(
       `INSERT INTO routes(codigo,status,distance_km,estimated_minutes,estimated_liters,estimated_cost,created_by)
-       VALUES($1,'Aprobada',$2,$3,$4,$5,$6) RETURNING id,codigo AS code`,
+       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,codigo AS code`,
       [
         input.code,
+        input.status,
         input.distanceKm,
         input.estimatedMinutes,
         input.estimatedLiters,
@@ -122,6 +125,22 @@ class PostgresRouteTransaction implements RouteTransaction {
     }
   }
 
+  async lockRouteForApproval(routeId: string): Promise<{ status: string } | null> {
+    const result = await this.client.query(
+      "SELECT status FROM routes WHERE id=$1 FOR UPDATE",
+      [routeId],
+    )
+    return result.rowCount ? { status: result.rows[0].status as string } : null
+  }
+
+  async updateRouteStatus(routeId: string, status: RouteStatus): Promise<boolean> {
+    const result = await this.client.query(
+      "UPDATE routes SET status=$2,updated_at=now() WHERE id=$1 AND status='Calculada'",
+      [routeId, status],
+    )
+    return Boolean(result.rowCount)
+  }
+
   async deleteRouteStatusEvents(routeId: string): Promise<void> {
     await this.client.query("DELETE FROM status_events WHERE route_id=$1", [routeId])
   }
@@ -152,7 +171,7 @@ class PostgresRouteTransaction implements RouteTransaction {
 
   async driverHasActiveRoute(driverId: string): Promise<boolean> {
     const result = await this.client.query(
-      "SELECT 1 FROM routes WHERE driver_id=$1 AND status IN ('Asignada','En ruta')",
+      "SELECT 1 FROM routes WHERE driver_id=$1 AND status IN ('Asignada','En curso')",
       [driverId],
     )
     return Boolean(result.rowCount)
@@ -168,7 +187,7 @@ class PostgresRouteTransaction implements RouteTransaction {
 
   async vehicleHasActiveRoute(vehicleId: string): Promise<boolean> {
     const result = await this.client.query(
-      "SELECT 1 FROM routes WHERE vehicle_id=$1 AND status IN ('Asignada','En ruta')",
+      "SELECT 1 FROM routes WHERE vehicle_id=$1 AND status IN ('Asignada','En curso')",
       [vehicleId],
     )
     return Boolean(result.rowCount)
@@ -186,7 +205,7 @@ class PostgresRouteTransaction implements RouteTransaction {
 
   async assignRoute(routeId: string, driverId: string, vehicleId: string): Promise<void> {
     await this.client.query(
-      "UPDATE routes SET driver_id=$2,vehicle_id=$3,status='Asignada',updated_at=now() WHERE id=$1",
+      "UPDATE routes SET driver_id=$2,vehicle_id=$3,status='Asignada',updated_at=now() WHERE id=$1 AND status='Aprobada'",
       [routeId, driverId, vehicleId],
     )
   }
@@ -215,11 +234,12 @@ class PostgresRouteTransaction implements RouteTransaction {
       : null
   }
 
-  async startRoute(routeId: string): Promise<void> {
-    await this.client.query(
-      "UPDATE routes SET status='En ruta',started_at=now(),updated_at=now() WHERE id=$1",
-      [routeId],
+  async startRoute(routeId: string, status: RouteStatus): Promise<boolean> {
+    const result = await this.client.query(
+      "UPDATE routes SET status=$2,started_at=now(),updated_at=now() WHERE id=$1 AND status='Asignada'",
+      [routeId, status],
     )
+    return Boolean(result.rowCount)
   }
 
   async updateStopStatus(stopId: string, status: string): Promise<void> {
@@ -378,37 +398,6 @@ class PostgresRouteTransaction implements RouteTransaction {
     )
   }
 
-  async releaseFailedDeliveryReservation(input: {
-    productId: string
-    quantity: number
-    orderId: string
-    actorId: string
-  }): Promise<void> {
-    const updated = await this.client.query(
-      `UPDATE products SET reserved_stock=reserved_stock-$2,updated_at=now()
-       WHERE id=$1 AND reserved_stock >= $2 RETURNING id`,
-      [input.productId, input.quantity],
-    )
-    if (!updated.rowCount) throw new Error("No se pudo liberar la reserva de inventario")
-    const released = await this.client.query(
-      `UPDATE stock_reservations SET released_at=now()
-       WHERE order_id=$1 AND product_id=$2 AND released_at IS NULL RETURNING id`,
-      [input.orderId, input.productId],
-    )
-    if (!released.rowCount) throw new Error("No se encontró la reserva activa del pedido")
-    await this.client.query(
-      `INSERT INTO inventory_movements(producto_id,tipo,cantidad,motivo,usuario_id,pedido_id)
-       VALUES($1,'LIBERACION',$2,$3,$4,$5)`,
-      [
-        input.productId,
-        input.quantity,
-        `Liberación por entrega fallida del pedido ${input.orderId}`,
-        input.actorId,
-        input.orderId,
-      ],
-    )
-  }
-
   async lockStopForIncident(stopId: string): Promise<StopForDelivery | null> {
     return this.lockStop(stopId)
   }
@@ -520,9 +509,17 @@ class PostgresRouteTransaction implements RouteTransaction {
     return Boolean(result.rowCount)
   }
 
+  async lockRouteForClosure(routeId: string): Promise<{ status: string } | null> {
+    const result = await this.client.query(
+      "SELECT status FROM routes WHERE id=$1 FOR UPDATE",
+      [routeId],
+    )
+    return result.rowCount ? { status: result.rows[0].status as string } : null
+  }
+
   async closeRoute(routeId: string): Promise<{ vehicleId: string } | null> {
     const result = await this.client.query(
-      "UPDATE routes SET status='Cerrada',closed_at=now(),updated_at=now() WHERE id=$1 AND status='En ruta' RETURNING vehicle_id",
+      "UPDATE routes SET status='Cerrada',closed_at=now(),updated_at=now() WHERE id=$1 AND status='En curso' RETURNING vehicle_id",
       [routeId],
     )
     return result.rowCount ? { vehicleId: result.rows[0].vehicle_id as string } : null
@@ -609,7 +606,7 @@ export class PostgresRouteRepository implements RouteRepository {
          JOIN orders o ON o.id=s.order_id JOIN clients c ON c.id=o.client_id
          WHERE s.route_id=r.id),'[]'::jsonb) AS route_stops
        FROM routes r LEFT JOIN vehicles v ON v.id=r.vehicle_id
-       WHERE r.driver_id=$1 AND r.status IN ('Asignada','En ruta')
+       WHERE r.driver_id=$1 AND r.status IN ('Asignada','En curso')
        ORDER BY r.created_at DESC LIMIT 1`,
       [driverId],
     )

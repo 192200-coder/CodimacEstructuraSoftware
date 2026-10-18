@@ -29,6 +29,12 @@ export function createRoutesRouter(useCases: RouteUseCases) {
     res.json({ routes: await useCases.list() })
   })
 
+  router.post("/routes/:id/approve", requireRole("Despachador"), async (req, res) => {
+    const { id } = idParamSchema.parse(req.params)
+    await useCases.approve(id, req.user!.id)
+    res.json({ status: "Aprobada" })
+  })
+
   router.delete("/routes/:id", requireRole("Despachador"), async (req, res) => {
     const { id } = idParamSchema.parse(req.params)
     await useCases.remove(id, req.user!.id)
@@ -54,7 +60,7 @@ export function createRoutesRouter(useCases: RouteUseCases) {
   router.post("/routes/:id/start", requireRole("Chofer"), async (req, res) => {
     const { id } = idParamSchema.parse(req.params)
     await useCases.start(id, req.user!.id)
-    res.json({ status: "En ruta" })
+    res.json({ status: "En curso" })
   })
 
   router.post("/stops/:id/deliver", requireRole("Chofer"), async (req, res) => {
