@@ -1,5 +1,7 @@
 # CODIMAC
 
+## Maykol David Espinoza Kquerare - Proceso 2: Planificación y optimización inteligente de rutas
+
 Aplicación web de gestión logística para pedidos, inventario y reparto. El
 espacio contiene una interfaz Angular y una API REST con Express y PostgreSQL.
 
