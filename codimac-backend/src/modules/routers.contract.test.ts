@@ -86,7 +86,8 @@ function createCatalogUseCasesMock(): CatalogUseCases {
       active: true,
       created_at: "2026-10-18T00:00:00Z",
     })),
-    loadDemoData: vi.fn(async () => undefined),
+    loadDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
+    resetDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
     registerInventoryMovement: vi.fn(async () => 100),
     listIndicators: vi.fn(async () => []),
     listAudit: vi.fn(async () => ({ events: [], total: 0 })),
@@ -404,5 +405,40 @@ describe("contratos HTTP de los routers refactorizados", () => {
       detail: "Ajuste por conteo",
     })
     expect(validAdjustment.status).toBe(200)
+  })
+
+  it("informa si el restablecimiento está habilitado y lo rechaza con 403 cuando no lo está (M-05)", async () => {
+    authState.role = "Administrador"
+    const status = await fetch(`${baseUrl}/api/admin/demo-data`)
+    expect(await status.json()).toEqual({ resetEnabled: false })
+
+    const reset = await fetch(`${baseUrl}/api/admin/demo-data/reset`, { method: "POST" })
+    expect(reset.status).toBe(403)
+    expect(catalogUseCases.resetDemoData).not.toHaveBeenCalled()
+
+    const load = await fetch(`${baseUrl}/api/admin/demo-data`, { method: "POST" })
+    expect(load.status).toBe(200)
+    expect(catalogUseCases.loadDemoData).toHaveBeenCalledWith("90000000-0000-4000-8000-000000000001")
+  })
+
+  it("restablece los datos de ejemplo solo si el entorno lo habilita", async () => {
+    authState.role = "Administrador"
+    const useCases = createCatalogUseCasesMock()
+    const app = express()
+    app.use(express.json())
+    app.use("/api", createCatalogRouter(useCases, { demoResetEnabled: true }))
+    app.use(errorHandler)
+    const enabledServer = app.listen(0)
+    await new Promise<void>((resolve) => enabledServer.once("listening", resolve))
+    const address = enabledServer.address()
+    if (!address || typeof address === "string") throw new Error("Sin puerto de prueba")
+    try {
+      const reset = await fetch(`http://127.0.0.1:${address.port}/api/admin/demo-data/reset`, { method: "POST" })
+      expect(reset.status).toBe(200)
+      expect(await reset.json()).toEqual({ reset: true, operationalDataLoaded: true })
+      expect(useCases.resetDemoData).toHaveBeenCalledWith("90000000-0000-4000-8000-000000000001")
+    } finally {
+      await new Promise<void>((resolve) => enabledServer.close(() => resolve()))
+    }
   })
 })

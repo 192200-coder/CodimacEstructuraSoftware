@@ -1,23 +1,54 @@
 @if (loadError()) {<div class="alert error" role="alert"><strong>No se pudo cargar la sección</strong><span>{{ loadError() }}</span></div>}
 @if (section === "Datos de ejemplo") {
-  <section class="card module-card">
-    <p class="section-kicker">ENTORNO DE DEMOSTRACIÓN</p>
-    <h2>Cargar datos de ejemplo</h2>
-    <p>Agrega clientes, productos, vehículos, usuarios y pedidos ficticios que aún no existan. La operación es idempotente: no elimina ni reemplaza registros.</p>
-    <p class="alert info" role="note">"Restablecer datos" (borrar y recargar) no está disponible: es una acción destructiva sobre la base compartida y quedó pendiente.</p>
-    @if (confirmingDemoData()) {
-      <div class="inline-confirm" role="alertdialog" aria-labelledby="demo-confirm-title">
-        <strong id="demo-confirm-title">¿Cargar los datos de ejemplo que falten?</strong>
-        <span>Los registros existentes no se modifican.</span>
-        <div>
-          <button class="button secondary" type="button" [disabled]="loadingDemoData()" (click)="confirmingDemoData.set(false)">Cancelar</button>
-          <button class="button primary" type="button" [disabled]="loadingDemoData()" (click)="loadDemoData()">@if (loadingDemoData()) {<span class="spinner" aria-hidden="true"></span> Cargando…} @else {Sí, cargar datos}</button>
+  <section class="settings-grid demo-data-grid">
+    <div class="card">
+      <p class="section-kicker">ENTORNO DE DEMOSTRACIÓN</p>
+      <h2>Cargar datos de ejemplo</h2>
+      <p>Agrega lo que falte: usuarios de cada rol, 4 clientes con ubicación (uno fuera del área de servicio), 3 productos, 2 vehículos, pedidos en cada estado y un reparto cerrado. No elimina ni reemplaza registros.</p>
+      @if (confirmingDemoData()) {
+        <div class="inline-confirm" role="alertdialog" aria-labelledby="demo-confirm-title">
+          <strong id="demo-confirm-title">¿Cargar los datos de ejemplo que falten?</strong>
+          <span>Los registros existentes no se modifican.</span>
+          <div>
+            <button class="button secondary" type="button" [disabled]="loadingDemoData()" (click)="confirmingDemoData.set(false)">Cancelar</button>
+            <button class="button primary" type="button" [disabled]="loadingDemoData()" (click)="loadDemoData()">@if (loadingDemoData()) {<span class="spinner" aria-hidden="true"></span> Cargando…} @else {Sí, cargar datos}</button>
+          </div>
         </div>
-      </div>
-    } @else {
-      <button class="button primary" type="button" (click)="confirmingDemoData.set(true)"><codimac-icon name="database" [size]="16" /> Cargar datos de ejemplo</button>
-    }
+      } @else {
+        <button class="button primary" type="button" (click)="confirmingDemoData.set(true)"><codimac-icon name="database" [size]="16" /> Cargar datos de ejemplo</button>
+      }
+    </div>
+    <div class="card">
+      <p class="section-kicker">EMPEZAR DE CERO</p>
+      <h2>Restablecer datos de ejemplo</h2>
+      <p>Borra pedidos, repartos, inventario, clientes, productos, vehículos y parámetros, y vuelve a cargar el ejemplo. Los usuarios y la auditoría se conservan; las cuentas de ejemplo vuelven a la contraseña <strong>demostracion</strong>.</p>
+      @if (demoResetEnabled()) {
+        <button class="button danger-outline" type="button" (click)="confirmingReset.set(true)"><codimac-icon name="history" [size]="16" /> Restablecer datos</button>
+      } @else {
+        <p class="alert info" role="note">Deshabilitado en este entorno. Para usarlo en una base de demostración, inicia el backend con <code>DEMO_RESET_ENABLED=true</code> o ejecuta <code>pnpm seed -- --reset</code>.</p>
+      }
+    </div>
   </section>
+  @if (confirmingReset()) {
+    <div class="dialog-backdrop" (click)="!loadingDemoData() && confirmingReset.set(false)">
+      <section class="dialog cancellation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-message" (click)="$event.stopPropagation()">
+        <header class="dialog-header">
+          <div><p class="section-kicker">CONFIRMAR ACCIÓN</p><h2 id="reset-title">Restablecer datos de ejemplo</h2></div>
+          <button class="icon-button" type="button" aria-label="Cerrar confirmación" [disabled]="loadingDemoData()" (click)="confirmingReset.set(false)"><codimac-icon name="close" /></button>
+        </header>
+        <div class="dialog-body">
+          <div class="dialog-confirm danger">
+            <div><codimac-icon name="alertTriangle" [size]="24" /></div>
+            <p id="reset-message">Esto reemplazará los datos actuales. ¿Continuar?</p>
+          </div>
+        </div>
+        <footer class="dialog-footer">
+          <button class="button secondary" type="button" [disabled]="loadingDemoData()" (click)="confirmingReset.set(false)">Cancelar</button>
+          <button class="button danger-primary" type="button" [disabled]="loadingDemoData()" (click)="resetDemoData()">@if (loadingDemoData()) {<span class="spinner" aria-hidden="true"></span> Restableciendo…} @else {Restablecer}</button>
+        </footer>
+      </section>
+    </div>
+  }
 } @else if (section === "Indicadores") {
   <section class="card module-card indicator-filters">
     <div class="filterbar">

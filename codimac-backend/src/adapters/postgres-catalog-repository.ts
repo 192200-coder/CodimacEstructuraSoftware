@@ -9,10 +9,11 @@ import type {
   CatalogTransaction,
   CatalogUser,
   CatalogUserSnapshot,
+  DemoDataSummary,
   PasswordHasher,
 } from "../application/catalog.js"
 import type { RegistroAuditoria } from "../application/registro-auditoria.js"
-import { loadDemoData } from "../db/demo-data.js"
+import { loadDemoData, resetDemoData } from "../db/demo-data.js"
 import { PostgresRegistroAuditoria } from "./postgres-registro-auditoria.js"
 
 export const catalogFields: Record<CatalogResource, readonly string[]> = {
@@ -267,9 +268,15 @@ export class PostgresCatalogRepository implements CatalogRepository {
     return result.rows as CatalogUser[]
   }
 
-  async loadDemoData(): Promise<void> {
-    await inTransaction((client) =>
-      loadDemoData(client, (password) => this.passwordHasher.hash(password)),
+  async loadDemoData(actorId: string): Promise<DemoDataSummary> {
+    return inTransaction((client) =>
+      loadDemoData(client, (password) => this.passwordHasher.hash(password), { actorId }),
+    )
+  }
+
+  async resetDemoData(actorId: string): Promise<DemoDataSummary> {
+    return inTransaction((client) =>
+      resetDemoData(client, (password) => this.passwordHasher.hash(password), { actorId }),
     )
   }
 

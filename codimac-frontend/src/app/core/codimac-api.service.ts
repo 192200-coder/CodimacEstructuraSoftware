@@ -23,6 +23,8 @@ import {
   getAdminUsers,
   getIndicators,
   loadDemoData,
+  resetDemoData,
+  getDemoDataStatus,
   getOrders,
   getOrderEvents,
   getResources,
@@ -71,6 +73,14 @@ export class CodimacApiService {
 
   loadDemoData() {
     return loadDemoData()
+  }
+
+  resetDemoData() {
+    return resetDemoData()
+  }
+
+  getDemoDataStatus() {
+    return getDemoDataStatus()
   }
 
   updateParameters(value: {

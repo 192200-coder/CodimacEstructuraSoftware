@@ -88,8 +88,35 @@ Al cargar los fixtures de demostración:
 | Correo | Rol | Contraseña inicial |
 |---|---|---|
 | `maria@codimac.pe` | Despachador | `demostracion` |
-| `carlos@codimac.pe` | Chofer | `demostracion` |
 | `jose@codimac.pe` | Administrador | `demostracion` |
+| `laura@codimac.pe` | Administrador | `demostracion` |
+| `carlos@codimac.pe` | Chofer | `demostracion` |
+| `ana@codimac.pe` | Chofer | `demostracion` |
+| `luis@codimac.pe` | Chofer | `demostracion` |
+
+Los datos de ejemplo siguen la sección 10.3 del documento de pantallas y permiten
+recorrer el flujo completo y los escenarios del Anexo C sin preparar nada:
+
+- Inventario: Cemento tipo I 200/115/85 (existencias/reservadas/disponibles),
+  Fierro 500/120/380 y Ladrillo King Kong 8 000/2 000/6 000.
+- Pedidos en cada estado: Pendiente (dos de 60 bolsas para E-03), En
+  preparación, Listo (tres livianos para un reparto con la camioneta y uno de
+  2 800 kg para E-17), Cancelado y Entregado.
+- Un reparto cerrado con referencia (historial, indicadores y P-A06).
+- Cliente D a unos 55 km del almacén (advertencia del área de servicio, E-14).
+- Portal del cliente: Cliente A responde con los últimos 4 dígitos `4321`.
+
+Para empezar de cero en una base de demostración:
+
+```powershell
+pnpm seed -- --reset
+```
+
+Esto borra pedidos, repartos, inventario, clientes, productos, vehículos y
+parámetros, conserva usuarios y auditoría, y recarga el ejemplo. Desde la
+interfaz (Administrador → Datos de ejemplo) el botón "Restablecer" solo aparece
+si el backend se inicia con `DEMO_RESET_ENABLED=true`; déjalo en `false` en
+cualquier base con datos reales.
 
 Estas credenciales son solo para desarrollo y pruebas. Cámbialas en cualquier
 entorno compartido o desplegado.

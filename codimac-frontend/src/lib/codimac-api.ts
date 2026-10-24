@@ -595,8 +595,16 @@ export async function getAdminAuditEvents(filters: AuditEventFilters = {}) {
   }>(`/admin/audit${suffix}`)
 }
 
+export async function getDemoDataStatus() {
+  return request<{ resetEnabled: boolean }>("/admin/demo-data")
+}
+
 export async function loadDemoData() {
-  return request<{ loaded: boolean }>("/admin/demo-data", { method: "POST" })
+  return request<{ loaded: boolean; operationalDataLoaded: boolean }>("/admin/demo-data", { method: "POST" })
+}
+
+export async function resetDemoData() {
+  return request<{ reset: boolean; operationalDataLoaded: boolean }>("/admin/demo-data/reset", { method: "POST" })
 }
 
 export interface RemoteIndicator {

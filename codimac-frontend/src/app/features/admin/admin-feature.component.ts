@@ -99,6 +99,8 @@ export class AdminFeatureComponent {
   readonly duration = formatearDuracion
   readonly loadingDemoData = signal(false)
   readonly confirmingDemoData = signal(false)
+  readonly confirmingReset = signal(false)
+  readonly demoResetEnabled = signal(false)
   readonly loadError = signal("")
   readonly loaded = signal(false)
   readonly search = signal("")
@@ -375,7 +377,10 @@ export class AdminFeatureComponent {
   @HostListener("document:keydown.escape")
   closeOnEscape(): void {
     this.cancelEdit()
-    if (!this.loadingDemoData()) this.confirmingDemoData.set(false)
+    if (!this.loadingDemoData()) {
+      this.confirmingDemoData.set(false)
+      this.confirmingReset.set(false)
+    }
   }
 
   // ── Parámetros (P-A05) ────────────────────────────────────────────────────────────────
@@ -441,16 +446,40 @@ export class AdminFeatureComponent {
     if (this.loadingDemoData()) return
     this.loadingDemoData.set(true)
     try {
-      await this.api.loadDemoData()
+      const result = await this.api.loadDemoData()
       this.confirmingDemoData.set(false)
-      this.state.catalogRefresh.update((value) => value + 1)
-      this.state.ordersRefresh.update((value) => value + 1)
-      this.state.showToast("Datos de ejemplo cargados.")
+      this.refreshAfterDemoData()
+      this.state.showToast(result.operationalDataLoaded
+        ? "Datos de ejemplo cargados."
+        : "Catálogos completados. Los pedidos de ejemplo ya existían; usa Restablecer para empezar de cero.", "success", 6000)
     } catch (error) {
       this.state.showError(error, "No se pudieron cargar los datos de ejemplo.")
     } finally {
       this.loadingDemoData.set(false)
     }
+  }
+
+  /** M-05: borra pedidos, repartos, inventario y catálogos y recarga el ejemplo. */
+  async resetDemoData(): Promise<void> {
+    if (this.loadingDemoData()) return
+    this.loadingDemoData.set(true)
+    try {
+      await this.api.resetDemoData()
+      this.confirmingReset.set(false)
+      this.refreshAfterDemoData()
+      this.state.showToast("Datos de ejemplo restablecidos.")
+    } catch (error) {
+      this.confirmingReset.set(false)
+      this.state.showError(error, "No se pudieron restablecer los datos de ejemplo.")
+    } finally {
+      this.loadingDemoData.set(false)
+    }
+  }
+
+  private refreshAfterDemoData(): void {
+    this.state.catalogRefresh.update((value) => value + 1)
+    this.state.ordersRefresh.update((value) => value + 1)
+    this.state.inventoryRefresh.update((value) => value + 1)
   }
 
   // ── Auditoría (P-A07) ─────────────────────────────────────────────────────────────────
@@ -523,6 +552,8 @@ export class AdminFeatureComponent {
         await this.loadAuditEvents()
       } else if (section === "Indicadores") {
         this.indicators.set((await this.api.getIndicators()).indicators)
+      } else if (section === "Datos de ejemplo") {
+        this.demoResetEnabled.set((await this.api.getDemoDataStatus()).resetEnabled)
       } else if (section === "Parámetros") {
         const parameters = await this.api.getCatalog<RouteParameters | null>("parameters")
         this.parametersConfigured = parameters !== null

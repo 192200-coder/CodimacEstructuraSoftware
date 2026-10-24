@@ -90,11 +90,17 @@ export interface CatalogRepository {
   listCatalog(resource: CatalogResource): Promise<unknown[]>
   getParameters(): Promise<unknown | null>
   listUsers(): Promise<CatalogUser[]>
-  loadDemoData(): Promise<void>
+  loadDemoData(actorId: string): Promise<DemoDataSummary>
+  resetDemoData(actorId: string): Promise<DemoDataSummary>
   listIndicators(): Promise<unknown[]>
   listAudit(query: AuditQuery): Promise<{ events: unknown[]; total: number }>
   listLegacyEvents(limit: number): Promise<unknown[]>
   listInventoryMovements(productId: string): Promise<unknown[]>
+}
+
+export interface DemoDataSummary {
+  /** false si los pedidos y el reparto de ejemplo ya existían y solo se completaron catálogos. */
+  operationalDataLoaded: boolean
 }
 
 export interface PasswordHasher {
@@ -131,7 +137,8 @@ export interface CatalogUseCases {
     active?: boolean
     password?: string
   }): Promise<CatalogUser>
-  loadDemoData(): Promise<void>
+  loadDemoData(actorId: string): Promise<DemoDataSummary>
+  resetDemoData(actorId: string): Promise<DemoDataSummary>
   registerInventoryMovement(input: InventoryMovementInput): Promise<number>
   listIndicators(): Promise<unknown[]>
   listAudit(query: AuditQuery): Promise<{ events: unknown[]; total: number }>
@@ -318,7 +325,8 @@ export function createCatalogUseCases(
         return user
       })
     },
-    loadDemoData: () => repository.loadDemoData(),
+    loadDemoData: (actorId) => repository.loadDemoData(actorId),
+    resetDemoData: (actorId) => repository.resetDemoData(actorId),
     async registerInventoryMovement(input) {
       if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
         throw new ApplicationError(

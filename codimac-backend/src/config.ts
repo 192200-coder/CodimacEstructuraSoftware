@@ -11,6 +11,8 @@ const envSchema = z.object({
   CORS_ORIGIN: z.string().default("http://localhost:8443"),
   DATABASE_SSL: z.enum(["true", "false"]).default("true"),
   GOOGLE_MAPS_API_KEY: z.string().default(""),
+  // M-05: el restablecimiento borra datos; solo se habilita a propósito en entornos de demostración.
+  DEMO_RESET_ENABLED: z.enum(["true", "false"]).default("false"),
 })
 
 const parsed = envSchema.safeParse(process.env)

@@ -30,7 +30,10 @@ function isCatalogResource(resource: unknown): resource is CatalogResource {
   return resource === "clients" || resource === "products" || resource === "vehicles"
 }
 
-export function createCatalogRouter(useCases: CatalogUseCases) {
+export function createCatalogRouter(
+  useCases: CatalogUseCases,
+  options: { demoResetEnabled: boolean } = { demoResetEnabled: false },
+) {
   const router = Router()
   router.use(authenticate)
 
@@ -93,9 +96,21 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
     res.json({ users: await useCases.listUsers() })
   })
 
-  router.post("/admin/demo-data", requireRole("Administrador"), async (_req, res) => {
-    await useCases.loadDemoData()
-    res.json({ loaded: true })
+  router.get("/admin/demo-data", requireRole("Administrador"), (_req, res) => {
+    res.json({ resetEnabled: options.demoResetEnabled })
+  })
+
+  router.post("/admin/demo-data", requireRole("Administrador"), async (req, res) => {
+    const summary = await useCases.loadDemoData(req.user!.id)
+    res.json({ loaded: true, ...summary })
+  })
+
+  router.post("/admin/demo-data/reset", requireRole("Administrador"), async (req, res) => {
+    if (!options.demoResetEnabled) {
+      throw new HttpError(403, "El restablecimiento está deshabilitado. Actívalo con DEMO_RESET_ENABLED=true solo en una base de demostración.")
+    }
+    const summary = await useCases.resetDemoData(req.user!.id)
+    res.json({ reset: true, ...summary })
   })
 
   router.post("/admin/users", requireRole("Administrador"), async (req, res) => {

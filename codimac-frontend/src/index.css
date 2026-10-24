@@ -1314,3 +1314,6 @@ button.metric-card:hover { border-color: #b9c6d3; box-shadow: 0 6px 16px rgba(23
 .indicator-filters .count-pill { align-self: flex-end; }
 .module-card > .field-hint { margin: 0; padding: 8px 17px; }
 .pagination > span { color: #5f6d7d; font-size: 12px; }
+.demo-data-grid .card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.demo-data-grid p { color: #4b5b6e; font-size: 13px; line-height: 1.5; }
+.demo-data-grid code { padding: 1px 5px; background: #eef2f5; border-radius: 4px; font-size: 12px; }

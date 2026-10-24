@@ -88,7 +88,9 @@ app.use("/api/auth", rateLimit({
 }), createAuthRouter(authenticationUseCases))
 app.use("/api", sharedRouter)
 app.use("/api/orders", createOrdersRouter(orderUseCases))
-app.use("/api", createCatalogRouter(catalogUseCases))
+app.use("/api", createCatalogRouter(catalogUseCases, {
+  demoResetEnabled: config.DEMO_RESET_ENABLED === "true",
+}))
 app.use("/api", createRoutesRouter(routeUseCases))
 
 app.use((_req, _res, next) => next(new HttpError(404, "Recurso no encontrado")))
