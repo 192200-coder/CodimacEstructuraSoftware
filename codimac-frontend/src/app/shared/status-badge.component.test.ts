@@ -27,4 +27,31 @@ describe("presentación visual de estados", () => {
 
     expect(badge.iconName).toBe(icon)
   })
+
+  it("usa la variante de parada: Pendiente con punto y En camino azul con flecha (9.1)", () => {
+    const pending = new StatusBadgeComponent()
+    pending.status = "Pendiente"
+    pending.kind = "parada"
+    const onWay = new StatusBadgeComponent()
+    onWay.status = "En camino"
+    onWay.kind = "parada"
+
+    expect(pending.iconName).toBe("dot")
+    expect(onWay.iconName).toBe("arrowRight")
+    expect(onWay.badgeClass).toContain("on-way")
+  })
+
+  it.each([
+    ["Incidencia", "incident", "alertTriangle"],
+    ["No entregada", "cancelled", "close"],
+    ["Sin stock", "cancelled", "xCircle"],
+    ["Inactivo", "muted", "xCircle"],
+    ["Asignada", "assigned", "user"],
+  ])("distingue %s sin caer en el estilo por defecto", (status, className, icon) => {
+    const badge = new StatusBadgeComponent()
+    badge.status = status
+
+    expect(badge.badgeClass).toContain(className)
+    expect(badge.iconName).toBe(icon)
+  })
 })

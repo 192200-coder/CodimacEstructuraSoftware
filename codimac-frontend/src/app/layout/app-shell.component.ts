@@ -1,8 +1,24 @@
-import { Component, effect, HostListener, OnDestroy, signal } from "@angular/core"
+import { Component, effect, ElementRef, HostListener, OnDestroy, signal, ViewChild } from "@angular/core"
 import { AppStateService } from "../core/app-state.service"
 import { CodimacApiService } from "../core/codimac-api.service"
+import { roleNavigation } from "../core/models"
 import { IconComponent } from "../shared/icon.component"
 import type { RemoteNotification } from "../../lib/codimac-api"
+import { formatearFecha, iniciales, saludoPorHora } from "../../dominio/formato"
+
+const sectionSubtitles: Record<string, string> = {
+  Pedidos: "Registra pedidos, valida stock y avanza cada estado.",
+  Inventario: "Existencias, reservas y movimientos por producto.",
+  Clientes: "Datos de contacto y ubicación en el mapa de cada cliente.",
+  Repartos: "Arma repartos, compara rutas, asigna recursos y monitorea.",
+  Historial: "Resultados operativos de los repartos cerrados.",
+  Usuarios: "Cuentas, roles y acceso de cada persona.",
+  Productos: "Catálogo de productos con unidad, peso y stock inicial.",
+  "Vehículos": "Flota con capacidad, velocidad, rendimiento y disponibilidad.",
+  "Parámetros": "Almacén, área de servicio, combustible y minutos por parada.",
+  "Auditoría": "Registro inmutable de quién cambió qué y cuándo.",
+  "Datos de ejemplo": "Carga datos ficticios para demostrar el sistema.",
+}
 
 @Component({
   selector: "codimac-shell",
@@ -15,6 +31,8 @@ export class AppShellComponent implements OnDestroy {
   readonly readNotificationIds = signal<ReadonlySet<string>>(new Set())
   readonly notificationsOpen = signal(false)
   readonly notificationError = signal("")
+  readonly searchQuery = signal("")
+  @ViewChild("globalSearch") private globalSearchInput?: ElementRef<HTMLInputElement>
   private notificationTimer: ReturnType<typeof setInterval> | null = null
   private readonly notificationEffect = effect(() => {
     if (this.state.isOnline() && this.state.userId()) {
@@ -81,11 +99,29 @@ export class AppShellComponent implements OnDestroy {
   }
 
   formatNotificationDate(value: string): string {
-    return new Intl.DateTimeFormat("es-PE", {
-      dateStyle: "short",
-      timeStyle: "short",
-      timeZone: "America/Lima",
-    }).format(new Date(value))
+    return formatearFecha(value)
+  }
+
+  get canSearchOrders(): boolean {
+    return this.state.role() === "Despachador"
+  }
+
+  setSearchQuery(event: Event): void {
+    this.searchQuery.set((event.target as HTMLInputElement).value)
+  }
+
+  submitSearch(): void {
+    if (!this.searchQuery().trim()) return
+    this.state.searchOrders(this.searchQuery())
+    this.searchQuery.set("")
+  }
+
+  @HostListener("document:keydown", ["$event"])
+  focusSearchShortcut(event: KeyboardEvent): void {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && this.globalSearchInput) {
+      event.preventDefault()
+      this.globalSearchInput.nativeElement.focus()
+    }
   }
 
   toggleNotifications(): void {
@@ -185,43 +221,24 @@ export class AppShellComponent implements OnDestroy {
   }
 
   get userInitials(): string {
-    return this.state.userName().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()
+    return iniciales(this.state.userName())
   }
 
   get navItems() {
-    return this.state.role() === "Administrador"
-      ? [
-          { label: "Indicadores", icon: "grid" },
-          { label: "Usuarios", icon: "users" },
-          { label: "Productos", icon: "box" },
-          { label: "Vehículos", icon: "truck" },
-          { label: "Parámetros", icon: "warehouse" },
-          { label: "Historial", icon: "history" },
-          { label: "Auditoría", icon: "history" },
-          { label: "Datos de ejemplo", icon: "box" },
-        ]
-      : [
-          { label: "Panel", icon: "grid" },
-          { label: "Pedidos", icon: "box" },
-          { label: "Inventario", icon: "warehouse" },
-          { label: "Clientes", icon: "users" },
-          { label: "Repartos", icon: "truck" },
-          { label: "Historial", icon: "history" },
-        ]
+    return roleNavigation[this.state.role()]
   }
 
   get pageTitle(): string {
-    if (this.state.active() === "Panel") return `Buenos días, ${this.state.userName()}`
+    const firstName = this.state.userName().split(/\s+/)[0] ?? ""
+    if (this.state.active() === "Panel") return `${saludoPorHora()}, ${firstName}`
     if (this.state.active() === "Indicadores") return "Resumen de la operación"
     return this.state.active()
   }
 
   get pageSubtitle(): string {
     if (this.state.active() === "Panel") return "Así avanza la operación de hoy."
-    if (this.state.active() === "Indicadores") {
-      return "Resultados y eficiencia de los últimos 30 días."
-    }
-    return `Resumen y gestión de ${this.state.active().toLowerCase()}.`
+    if (this.state.active() === "Indicadores") return "Resultados y eficiencia de los repartos cerrados."
+    return sectionSubtitles[this.state.active()] ?? ""
   }
 
   async logout(): Promise<void> {

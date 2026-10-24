@@ -14,7 +14,6 @@ export type DialogKind =
   | "product"
   | "vehicle"
   | "resources"
-  | "notifications"
 
 export interface NavItem {
   label: string
@@ -32,14 +31,14 @@ export const roleNavigation: Record<Role, NavItem[]> = {
     { label: "Historial", icon: "history" },
   ],
   Administrador: [
-    { label: "Indicadores", icon: "grid" },
+    { label: "Indicadores", icon: "chart" },
     { label: "Usuarios", icon: "users" },
     { label: "Productos", icon: "box" },
     { label: "Vehículos", icon: "truck" },
-    { label: "Parámetros", icon: "warehouse" },
+    { label: "Parámetros", icon: "sliders" },
     { label: "Historial", icon: "history" },
-    { label: "Auditoría", icon: "history" },
-    { label: "Datos de ejemplo", icon: "box" },
+    { label: "Auditoría", icon: "shield" },
+    { label: "Datos de ejemplo", icon: "database" },
   ],
   Chofer: [
     { label: "Mi ruta", icon: "route" },

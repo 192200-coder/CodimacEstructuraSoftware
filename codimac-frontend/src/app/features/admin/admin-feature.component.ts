@@ -1,13 +1,31 @@
-import { DatePipe } from "@angular/common"
-import { Component, effect, signal } from "@angular/core"
+import { Component, effect, HostListener, signal, untracked } from "@angular/core"
+import { FechaPipe } from "../../shared/fecha.pipe"
 import { FormsModule } from "@angular/forms"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
+import type { DialogKind } from "../../core/models"
 import { IconComponent } from "../../shared/icon.component"
 import { MapLocationPickerComponent } from "../../shared/map-location-picker.component"
+import { NumeroPipe } from "../../shared/numero.pipe"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
-import type { AuditEvent } from "../../../lib/codimac-api"
+import { ApiRequestError, type AuditEvent, type RemoteIndicator } from "../../../lib/codimac-api"
 import { HistoryPageComponent } from "../dispatcher/history-page.component"
+import {
+  filtrarPorCierre,
+  formatearDuracion,
+  resumirIndicadores,
+} from "../../../dominio/indicadores"
+import {
+  normalizarPlaca,
+  ROLES_USUARIO,
+  TIPOS_VEHICULO,
+  UNIDADES_PRODUCTO,
+  validarParametros,
+  validarProducto,
+  validarUsuario,
+  validarVehiculo,
+  type ErroresCampo,
+} from "../../../dominio/validaciones"
 
 interface RouteParameters {
   warehouse_latitude: string | number
@@ -17,19 +35,89 @@ interface RouteParameters {
   service_radius_km?: string | number
 }
 
+interface UserRecord {
+  id: string
+  email: string
+  display_name: string
+  phone: string | null
+  role: string
+  active: boolean
+}
+
+interface ProductRecord {
+  id: string
+  name: string
+  unit: string
+  weight_kg: number | string
+  total_stock: number | string
+}
+
+interface VehicleRecord {
+  id: string
+  plate: string
+  vehicle_type: string
+  capacity_kg: number | string
+  average_speed_kmh: number | string
+  fuel_efficiency_km_l: number | string
+  available: boolean
+}
+
+type EditableSection = "Usuarios" | "Productos" | "Vehículos"
+
+const createDialogs: Record<EditableSection, DialogKind> = {
+  Usuarios: "user",
+  Productos: "product",
+  "Vehículos": "vehicle",
+}
+
+const createLabels: Record<EditableSection, string> = {
+  Usuarios: "Crear usuario",
+  Productos: "Nuevo producto",
+  "Vehículos": "Nuevo vehículo",
+}
+
+const backendFieldNames: Record<string, string> = {
+  weight_kg: "weightKg",
+  vehicle_type: "vehicleType",
+  capacity_kg: "capacityKg",
+  average_speed_kmh: "averageSpeedKmh",
+  fuel_efficiency_km_l: "fuelEfficiencyKmL",
+  warehouseLatitude: "warehouse",
+  warehouseLongitude: "warehouse",
+}
+
 @Component({
   selector: "codimac-admin",
   standalone: true,
-  imports: [DatePipe, FormsModule, HistoryPageComponent, IconComponent, MapLocationPickerComponent, StatusBadgeComponent],
+  imports: [FechaPipe, FormsModule, HistoryPageComponent, IconComponent, MapLocationPickerComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./admin-feature.component.html",
 })
 export class AdminFeatureComponent {
+  readonly roles = ROLES_USUARIO
+  readonly units = UNIDADES_PRODUCTO
+  readonly vehicleTypes = TIPOS_VEHICULO
+  readonly duration = formatearDuracion
   readonly loadingDemoData = signal(false)
+  readonly confirmingDemoData = signal(false)
+  readonly loadError = signal("")
+  readonly loaded = signal(false)
+  readonly search = signal("")
+  readonly users = signal<UserRecord[]>([])
+  readonly products = signal<ProductRecord[]>([])
+  readonly vehicles = signal<VehicleRecord[]>([])
+  readonly indicators = signal<RemoteIndicator[]>([])
+  readonly indicatorsFrom = signal("")
+  readonly indicatorsTo = signal("")
   readonly editingId = signal("")
+  readonly saving = signal(false)
+  readonly errors = signal<ErroresCampo>({})
+  readonly formError = signal("")
   readonly auditEvents = signal<AuditEvent[]>([])
   readonly auditTotal = signal(0)
   readonly auditOffset = signal(0)
   readonly auditLimit = 25
+  readonly parametersErrors = signal<ErroresCampo>({})
+  readonly confirmingParameters = signal(false)
   auditDesde = ""
   auditHasta = ""
   auditUsuario = ""
@@ -41,19 +129,20 @@ export class AdminFeatureComponent {
   editActive = true
   editPassword = ""
   editUnit = ""
-  editWeightKg = 0
+  editWeightKg: number | null = 0
   editPlate = ""
   editVehicleType = ""
-  editCapacityKg = 0
-  editSpeedKmh = 0
-  editFuelEfficiency = 0
+  editCapacityKg: number | null = 0
+  editSpeedKmh: number | null = 0
+  editFuelEfficiency: number | null = 0
   editAvailable = true
   warehouseLatitude = -13.6366
   warehouseLongitude = -72.8814
-  fuelPrice = 6.2
-  minutesPerStop = 8
-  serviceRadiusKm = 50
+  fuelPrice: number | null = 6.2
+  minutesPerStop: number | null = 8
+  serviceRadiusKm: number | null = 50
   parametersConfigured = false
+  private originalUnit = ""
 
   constructor(
     readonly state: AppStateService,
@@ -63,66 +152,271 @@ export class AdminFeatureComponent {
       const online = this.state.isOnline()
       const section = this.state.active()
       this.state.catalogRefresh()
-      if (online) void this.loadSection(section)
+      untracked(() => {
+        this.search.set("")
+        if (online) void this.loadSection(section)
+      })
     })
   }
 
-  metricRows = [
-    ["Entregas", "—", "Rutas cerradas"],
-    ["Incidencias", "—", "Rutas cerradas"],
-    ["Tiempo total", "—", "Rutas cerradas"],
-    ["Kilómetros", "—", "Rutas cerradas"],
-    ["Combustible", "—", "Costo estimado"],
-  ]
-
-  tableData: Record<string, { headers: string[]; rows: string[][] }> = {
-    Usuarios: {
-      headers: ["Nombre", "Correo", "Celular", "Rol", "Estado"],
-      rows: [],
-    },
-    Productos: {
-      headers: ["Producto", "Unidad", "Peso", "Stock inicial"],
-      rows: [],
-    },
-    "Vehículos": {
-      headers: ["Placa", "Tipo", "Capacidad", "Disponibilidad"],
-      rows: [],
-    },
-    "Auditoría": {
-      headers: ["Fecha y hora", "Usuario", "Entidad", "Cambio"],
-      rows: [],
-    },
-  }
-  recordIds: Record<string, string[]> = {
-    Usuarios: [],
-    Productos: [],
-    "Vehículos": [],
-    "Auditoría": [],
+  get section(): string {
+    return this.state.active()
   }
 
-  get selectedData() {
-    return this.tableData[this.state.active()]
+  get isEditableSection(): boolean {
+    return this.section === "Usuarios" || this.section === "Productos" || this.section === "Vehículos"
   }
 
-  get auditPageEnd(): number {
-    return Math.min(this.auditOffset() + this.auditLimit, this.auditTotal())
+  get createLabel(): string {
+    return this.isEditableSection ? createLabels[this.section as EditableSection] : ""
   }
 
   openCreateDialog(): void {
-    const section = this.state.active()
-    const message =
-      section === "Auditoría"
-        ? "Exportar auditoría"
-        : `Formulario de ${section.toLowerCase()} abierto`
-    this.state.action(message)
+    if (this.isEditableSection) this.state.openDialog(createDialogs[this.section as EditableSection])
   }
 
+  setSearch(event: Event): void {
+    this.search.set((event.target as HTMLInputElement).value)
+  }
+
+  private matches(text: string): boolean {
+    const query = this.search().trim().toLocaleLowerCase("es-PE")
+    return !query || text.toLocaleLowerCase("es-PE").includes(query)
+  }
+
+  get filteredUsers(): UserRecord[] {
+    return this.users().filter((user) => this.matches(`${user.display_name} ${user.email} ${user.role} ${user.phone ?? ""}`))
+  }
+
+  get filteredProducts(): ProductRecord[] {
+    return this.products().filter((product) => this.matches(`${product.name} ${product.unit}`))
+  }
+
+  get filteredVehicles(): VehicleRecord[] {
+    return this.vehicles().filter((vehicle) => this.matches(`${vehicle.plate} ${vehicle.vehicle_type}`))
+  }
+
+  isSelf(user: UserRecord): boolean {
+    return user.id === this.state.userId()
+  }
+
+  get editingSelf(): boolean {
+    return this.editingId() === this.state.userId()
+  }
+
+  // ── Indicadores (P-A01) y ruta elegida vs referencia (P-A06) ──────────────────────────
+  get filteredIndicators(): RemoteIndicator[] {
+    return filtrarPorCierre(this.indicators(), this.indicatorsFrom(), this.indicatorsTo())
+  }
+
+  get summary() {
+    return resumirIndicadores(this.filteredIndicators)
+  }
+
+  barWidth(value: number, other: number): number {
+    const max = Math.max(value, other)
+    return max > 0 ? Math.round((value / max) * 100) : 0
+  }
+
+  routeSavings(row: RemoteIndicator): number | null {
+    if (row.reference_minutes === null || row.reference_minutes === undefined) return null
+    return Number(row.reference_minutes) - Number(row.estimated_minutes ?? 0)
+  }
+
+  setIndicatorsFrom(event: Event): void {
+    this.indicatorsFrom.set((event.target as HTMLInputElement).value)
+  }
+
+  setIndicatorsTo(event: Event): void {
+    this.indicatorsTo.set((event.target as HTMLInputElement).value)
+  }
+
+  // ── Edición en modal (M-01 para usuarios) ─────────────────────────────────────────────
+  startEditUser(user: UserRecord): void {
+    this.resetEditState(user.id)
+    this.editName = user.display_name
+    this.editPhone = user.phone ?? ""
+    this.editRole = user.role
+    this.editActive = user.active
+    this.editPassword = ""
+  }
+
+  startEditProduct(product: ProductRecord): void {
+    this.resetEditState(product.id)
+    this.editName = product.name
+    this.editUnit = product.unit
+    this.originalUnit = product.unit
+    this.editWeightKg = Number(product.weight_kg)
+  }
+
+  startEditVehicle(vehicle: VehicleRecord): void {
+    this.resetEditState(vehicle.id)
+    this.editPlate = vehicle.plate
+    this.editVehicleType = vehicle.vehicle_type
+    this.editCapacityKg = Number(vehicle.capacity_kg)
+    this.editSpeedKmh = Number(vehicle.average_speed_kmh)
+    this.editFuelEfficiency = Number(vehicle.fuel_efficiency_km_l)
+    this.editAvailable = vehicle.available
+  }
+
+  private resetEditState(id: string): void {
+    this.editingId.set(id)
+    this.errors.set({})
+    this.formError.set("")
+  }
+
+  /** Unidades de la lista más la actual, para no perder valores registrados antes de la v1.1. */
+  get editUnitOptions(): string[] {
+    return this.originalUnit && !(UNIDADES_PRODUCTO as readonly string[]).includes(this.originalUnit)
+      ? [this.originalUnit, ...UNIDADES_PRODUCTO]
+      : [...UNIDADES_PRODUCTO]
+  }
+
+  error(field: string): string {
+    return this.errors()[field] ?? ""
+  }
+
+  private validateEdit(): ErroresCampo {
+    if (this.section === "Usuarios") {
+      return validarUsuario(
+        { name: this.editName, email: "", password: this.editPassword, role: this.editRole, phone: this.editPhone },
+        { creando: false },
+      )
+    }
+    if (this.section === "Productos") {
+      return validarProducto({ name: this.editName, unit: this.editUnit, weightKg: this.editWeightKg })
+    }
+    return validarVehiculo({
+      plate: this.editPlate,
+      vehicleType: this.editVehicleType,
+      capacityKg: this.editCapacityKg,
+      averageSpeedKmh: this.editSpeedKmh,
+      fuelEfficiencyKmL: this.editFuelEfficiency,
+    })
+  }
+
+  validateField(field: string): void {
+    if (field === "plate") this.editPlate = normalizarPlaca(this.editPlate)
+    const message = this.validateEdit()[field]
+    this.errors.update((errors) => {
+      const { [field]: _previous, ...rest } = errors
+      return message ? { ...rest, [field]: message } : rest
+    })
+  }
+
+  async saveEdit(): Promise<void> {
+    const section = this.section
+    const id = this.editingId()
+    if (!id || this.saving()) return
+    const errors = this.validateEdit()
+    this.errors.set(errors)
+    this.formError.set("")
+    if (Object.keys(errors).length) {
+      const first = Object.keys(errors)[0]
+      queueMicrotask(() => document.querySelector<HTMLElement>(`.admin-edit-dialog [data-error-key="${first}"]`)?.focus())
+      return
+    }
+    this.saving.set(true)
+    try {
+      let message = ""
+      if (section === "Usuarios") {
+        await this.api.updateAdminUser(id, {
+          name: this.editName.trim(),
+          phone: this.editPhone.trim() || null,
+          // RF-00.7: el administrador no puede desactivarse ni quitarse su propio rol.
+          ...(this.editingSelf ? {} : { role: this.editRole, active: this.editActive }),
+          ...(this.editPassword ? { password: this.editPassword } : {}),
+        })
+        message = "Usuario actualizado."
+      } else if (section === "Productos") {
+        await this.api.updateCatalogRecord("products", id, {
+          name: this.editName.trim(),
+          weight_kg: Number(this.editWeightKg),
+          ...(this.editUnit !== this.originalUnit ? { unit: this.editUnit } : {}),
+        })
+        message = "Producto actualizado."
+      } else if (section === "Vehículos") {
+        await this.api.updateCatalogRecord("vehicles", id, {
+          plate: normalizarPlaca(this.editPlate),
+          vehicle_type: this.editVehicleType,
+          capacity_kg: Number(this.editCapacityKg),
+          average_speed_kmh: Number(this.editSpeedKmh),
+          fuel_efficiency_km_l: Number(this.editFuelEfficiency),
+          available: this.editAvailable,
+        })
+        message = "Vehículo actualizado."
+      } else {
+        return
+      }
+      this.editingId.set("")
+      await this.loadSection(section)
+      this.state.highlight(id)
+      this.state.showToast(message)
+    } catch (error) {
+      this.applyServerError(error, this.errors)
+    } finally {
+      this.saving.set(false)
+    }
+  }
+
+  private applyServerError(error: unknown, target: typeof this.errors): void {
+    if (error instanceof ApiRequestError && error.fields.length) {
+      target.set(Object.fromEntries(error.fields.map(({ field, message }) => [backendFieldNames[field] ?? field, message])))
+      this.formError.set(error.message === "Revisa los campos marcados." ? "" : error.message)
+      return
+    }
+    this.formError.set(error instanceof Error ? error.message : "No se pudieron guardar los cambios.")
+  }
+
+  cancelEdit(): void {
+    if (!this.saving()) this.editingId.set("")
+  }
+
+  @HostListener("document:keydown.escape")
+  closeOnEscape(): void {
+    this.cancelEdit()
+    if (!this.loadingDemoData()) this.confirmingDemoData.set(false)
+  }
+
+  // ── Parámetros (P-A05) ────────────────────────────────────────────────────────────────
   updateWarehouseLocation(location: { latitude: number; longitude: number }): void {
     this.warehouseLatitude = Number(location.latitude.toFixed(6))
     this.warehouseLongitude = Number(location.longitude.toFixed(6))
   }
 
+  parameterError(field: string): string {
+    return this.parametersErrors()[field] ?? ""
+  }
+
+  private validateParameters(): ErroresCampo {
+    return validarParametros({
+      fuelPrice: this.fuelPrice,
+      minutesPerStop: this.minutesPerStop,
+      serviceRadiusKm: this.serviceRadiusKm,
+      warehouseLatitude: this.warehouseLatitude,
+      warehouseLongitude: this.warehouseLongitude,
+    })
+  }
+
+  validateParameter(field: string): void {
+    const message = this.validateParameters()[field]
+    this.parametersErrors.update((errors) => {
+      const { [field]: _previous, ...rest } = errors
+      return message ? { ...rest, [field]: message } : rest
+    })
+  }
+
+  /** "Botón Guardar con confirmación": primero valida y pide confirmar el cambio. */
+  requestSaveParameters(): void {
+    const errors = this.validateParameters()
+    this.parametersErrors.set(errors)
+    this.formError.set("")
+    this.confirmingParameters.set(Object.keys(errors).length === 0)
+  }
+
   async saveParameters(): Promise<void> {
+    if (this.saving()) return
+    this.saving.set(true)
     try {
       await this.api.updateParameters({
         warehouseLatitude: Number(this.warehouseLatitude),
@@ -132,101 +426,50 @@ export class AdminFeatureComponent {
         serviceRadiusKm: Number(this.serviceRadiusKm),
       })
       this.parametersConfigured = true
-      this.state.showToast("Parámetros de ruta guardados correctamente.")
+      this.confirmingParameters.set(false)
+      this.state.showToast("Parámetros guardados.")
     } catch (error) {
-      this.state.showToast(error instanceof Error ? error.message : "No se pudieron guardar los parámetros.")
+      this.confirmingParameters.set(false)
+      this.applyServerError(error, this.parametersErrors)
+    } finally {
+      this.saving.set(false)
     }
   }
 
+  // ── Datos de ejemplo (P-A08) ──────────────────────────────────────────────────────────
   async loadDemoData(): Promise<void> {
-      if (!window.confirm("Se agregarán los datos demostrativos que falten. Los registros existentes no se eliminarán ni modificarán. ¿Deseas continuar?")) {
-        return
-      }
-      this.loadingDemoData.set(true)
-      try {
-        await this.api.loadDemoData()
-        this.state.catalogRefresh.update((value) => value + 1)
-        this.state.showToast("Datos de ejemplo inicializados correctamente")
-      } catch (error) {
-        this.state.showToast(error instanceof Error ? error.message : "No se pudieron cargar los datos demostrativos.")
-      } finally {
-        this.loadingDemoData.set(false)
-      }
-    }
-
-  startEdit(index: number): void {
-    const section = this.state.active()
-    const row = this.tableData[section]?.rows[index]
-    const id = this.recordIds[section]?.[index]
-    if (!row || !id) return
-    this.editingId.set(id)
-    if (section === "Usuarios") {
-      this.editName = row[0]
-      this.editPhone = row[2] === "—" ? "" : row[2]
-      this.editRole = row[3]
-      this.editActive = row[4] === "Activo"
-      this.editPassword = ""
-    } else if (section === "Productos") {
-      this.editName = row[0]
-      this.editUnit = row[1]
-      this.editWeightKg = Number.parseFloat(row[2])
-    } else if (section === "Vehículos") {
-      this.editPlate = row[0]
-      this.editVehicleType = row[1]
-      this.editCapacityKg = Number.parseFloat(row[2])
-      const resource = this.vehicleRecords.find((item) => item.id === id)
-      this.editSpeedKmh = resource?.averageSpeedKmh ?? 30
-      this.editFuelEfficiency = resource?.fuelEfficiency ?? 10
-      this.editAvailable = row[3] === "Disponible"
-    }
-  }
-
-  async saveEdit(): Promise<void> {
-    const section = this.state.active()
-    const id = this.editingId()
-    if (!id) return
+    if (this.loadingDemoData()) return
+    this.loadingDemoData.set(true)
     try {
-      if (section === "Usuarios") {
-        await this.api.updateAdminUser(id, {
-          name: this.editName.trim(),
-          phone: this.editPhone.trim() || null,
-          role: this.editRole,
-          active: this.editActive,
-          ...(this.editPassword ? { password: this.editPassword } : {}),
-        })
-      } else if (section === "Productos") {
-        await this.api.updateCatalogRecord("products", id, {
-          name: this.editName.trim(),
-          unit: this.editUnit.trim(),
-          weight_kg: Number(this.editWeightKg),
-        })
-      } else if (section === "Vehículos") {
-        await this.api.updateCatalogRecord("vehicles", id, {
-          plate: this.editPlate.trim(),
-          vehicle_type: this.editVehicleType,
-          capacity_kg: Number(this.editCapacityKg),
-          average_speed_kmh: Number(this.editSpeedKmh),
-          fuel_efficiency_km_l: Number(this.editFuelEfficiency),
-          available: this.editAvailable,
-        })
-      } else {
-        return
-      }
-      this.editingId.set("")
-      await this.loadSection(section)
-      this.state.showToast("Cambios guardados correctamente.")
+      await this.api.loadDemoData()
+      this.confirmingDemoData.set(false)
+      this.state.catalogRefresh.update((value) => value + 1)
+      this.state.ordersRefresh.update((value) => value + 1)
+      this.state.showToast("Datos de ejemplo cargados.")
     } catch (error) {
-      this.state.showToast(error instanceof Error ? error.message : "No se pudieron guardar los cambios.")
+      this.state.showError(error, "No se pudieron cargar los datos de ejemplo.")
+    } finally {
+      this.loadingDemoData.set(false)
     }
   }
 
-  cancelEdit(): void {
-    this.editingId.set("")
+  // ── Auditoría (P-A07) ─────────────────────────────────────────────────────────────────
+  get auditPageEnd(): number {
+    return Math.min(this.auditOffset() + this.auditLimit, this.auditTotal())
   }
 
   applyAuditFilters(): void {
     this.auditOffset.set(0)
     void this.loadAuditEvents()
+  }
+
+  clearAuditFilters(): void {
+    this.auditDesde = ""
+    this.auditHasta = ""
+    this.auditUsuario = ""
+    this.auditEntidad = ""
+    this.auditAccion = ""
+    this.applyAuditFilters()
   }
 
   previousAuditPage(): void {
@@ -240,8 +483,12 @@ export class AdminFeatureComponent {
     void this.loadAuditEvents()
   }
 
-  formatAuditValue(value: Record<string, unknown> | null): string {
-    return value === null ? "—" : JSON.stringify(value)
+  auditEntries(value: Record<string, unknown> | null): Array<[string, string]> {
+    if (!value) return []
+    return Object.entries(value).map(([key, entry]) => [
+      key,
+      entry === null || entry === undefined ? "—" : typeof entry === "object" ? JSON.stringify(entry) : String(entry),
+    ])
   }
 
   private async loadAuditEvents(): Promise<void> {
@@ -257,87 +504,25 @@ export class AdminFeatureComponent {
       })
       this.auditEvents.set(events)
       this.auditTotal.set(total)
+      this.loadError.set("")
     } catch (error) {
-      this.state.showToast(error instanceof Error ? error.message : "No se pudo cargar la auditoría.")
+      this.loadError.set(error instanceof Error ? error.message : "No se pudo cargar la auditoría.")
     }
   }
 
-  private vehicleRecords: Array<{
-    id: string
-    averageSpeedKmh: number
-    fuelEfficiency: number
-  }> = []
-
   private async loadSection(section: string): Promise<void> {
+    this.loaded.set(false)
     try {
       if (section === "Usuarios") {
-        const { users } = await this.api.getAdminUsers()
-        this.recordIds["Usuarios"] = users.map((user) => user.id)
-        this.tableData["Usuarios"].rows = users.map((user) => [
-          user.display_name,
-          user.email,
-          user.phone ?? "—",
-          user.role,
-          user.active ? "Activo" : "Inactivo",
-        ])
+        this.users.set((await this.api.getAdminUsers()).users)
       } else if (section === "Productos") {
-        const products = await this.api.getCatalog<Array<{
-          name: string
-          unit: string
-          weight_kg: number | string
-          total_stock: number | string
-          id: string
-        }>>("products")
-        this.recordIds["Productos"] = products.map((product) => product.id)
-        this.tableData["Productos"].rows = products.map((product) => [
-          product.name,
-          product.unit,
-          `${product.weight_kg} kg`,
-          String(product.total_stock),
-        ])
+        this.products.set(await this.api.getCatalog<ProductRecord[]>("products"))
       } else if (section === "Vehículos") {
-        const vehicles = await this.api.getCatalog<Array<{
-          plate: string
-          vehicle_type: string
-          capacity_kg: number | string
-          available: boolean
-          id: string
-          average_speed_kmh: number | string
-          fuel_efficiency_km_l: number | string
-        }>>("vehicles")
-        this.recordIds["Vehículos"] = vehicles.map((vehicle) => vehicle.id)
-        this.vehicleRecords = vehicles.map((vehicle) => ({
-          id: vehicle.id,
-          averageSpeedKmh: Number(vehicle.average_speed_kmh),
-          fuelEfficiency: Number(vehicle.fuel_efficiency_km_l),
-        }))
-        this.tableData["Vehículos"].rows = vehicles.map((vehicle) => [
-          vehicle.plate,
-          vehicle.vehicle_type,
-          `${vehicle.capacity_kg} kg`,
-          vehicle.available ? "Disponible" : "No disponible",
-        ])
+        this.vehicles.set(await this.api.getCatalog<VehicleRecord[]>("vehicles"))
       } else if (section === "Auditoría") {
         await this.loadAuditEvents()
-      } else if (section === "Historial") {
-        const { events } = await this.api.getAdminEvents()
-        this.tableData["Auditoría"].rows = events.map((event) => [
-          new Intl.DateTimeFormat("es-PE", { dateStyle: "short", timeStyle: "short" }).format(new Date(event.created_at)),
-          event.user,
-          event.role,
-          event.message,
-        ])
       } else if (section === "Indicadores") {
-        const { indicators } = await this.api.getIndicators()
-        const total = (key: string) => indicators.reduce((sum, row) => sum + Number(row[key] ?? 0), 0)
-        const minutes = total("estimated_minutes")
-        this.metricRows = [
-          ["Entregas", String(total("delivered")), "Rutas cerradas"],
-          ["Incidencias", String(total("incidents")), "Rutas cerradas"],
-          ["Tiempo total", `${Math.floor(minutes / 60)} h`, `${minutes % 60} min`],
-          ["Kilómetros", `${total("distance_km").toFixed(1)} km`, "Rutas cerradas"],
-          ["Combustible", `S/ ${total("estimated_cost").toFixed(2)}`, "Costo estimado"],
-        ]
+        this.indicators.set((await this.api.getIndicators()).indicators)
       } else if (section === "Parámetros") {
         const parameters = await this.api.getCatalog<RouteParameters | null>("parameters")
         this.parametersConfigured = parameters !== null
@@ -349,8 +534,11 @@ export class AdminFeatureComponent {
           this.serviceRadiusKm = Number(parameters.service_radius_km ?? 50)
         }
       }
+      this.loadError.set("")
     } catch (error) {
-      this.state.showToast(error instanceof Error ? error.message : `No se pudo cargar ${section.toLowerCase()}.`)
+      this.loadError.set(error instanceof Error ? error.message : `No se pudo cargar ${section.toLowerCase()}.`)
+    } finally {
+      this.loaded.set(true)
     }
   }
 }

@@ -1,11 +1,12 @@
 import { Component, effect, signal } from "@angular/core"
-import { DatePipe } from "@angular/common"
+import { FechaPipe } from "../../shared/fecha.pipe"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
 import { NumeroPipe } from "../../shared/numero.pipe"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { RemoteInventoryMovement } from "../../../lib/codimac-api"
+import { nivelStock, type NivelStock } from "../../../dominio/inventario"
 
 interface InventoryRow {
   id: string
@@ -14,12 +15,21 @@ interface InventoryRow {
   total: number
   reserved: number
   available: number
+  level: NivelStock
+}
+
+const movementLabels: Record<RemoteInventoryMovement["tipo"], string> = {
+  ENTRADA: "Entrada",
+  AJUSTE: "Ajuste",
+  RESERVA: "Reserva",
+  LIBERACION: "Liberación",
+  SALIDA: "Salida por entrega",
 }
 
 @Component({
   selector: "codimac-inventory-page",
   standalone: true,
-  imports: [DatePipe, IconComponent, NumeroPipe, StatusBadgeComponent],
+  imports: [FechaPipe, IconComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./inventory-page.component.html",
 })
 export class InventoryPageComponent {
@@ -52,11 +62,19 @@ export class InventoryPageComponent {
   }
 
   get reservedUnits(): number {
-    return this.products.reduce((total, product) => total + product.reserved, 0)
+    return this.remoteProducts().reduce((total, product) => total + product.reserved, 0)
   }
 
   get outOfStockCount(): number {
-    return this.products.filter((product) => product.available <= 0).length
+    return this.remoteProducts().filter((product) => product.level === "Sin stock").length
+  }
+
+  get lowStockCount(): number {
+    return this.remoteProducts().filter((product) => product.level === "Stock bajo").length
+  }
+
+  movementLabel(type: RemoteInventoryMovement["tipo"]): string {
+    return movementLabels[type] ?? type
   }
 
   setSearch(event: Event): void {
@@ -116,6 +134,7 @@ export class InventoryPageComponent {
           total,
           reserved,
           available: total - reserved,
+          level: nivelStock(total, reserved),
         }
       }))
     } catch (error) {

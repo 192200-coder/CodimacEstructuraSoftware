@@ -1,40 +1,57 @@
 <div class="dialog-backdrop" (click)="close()">
-  <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title" (click)="$event.stopPropagation()">
+  <section class="dialog" [class.dialog-wide]="kind === 'order' || kind === 'client'" role="dialog" aria-modal="true" aria-labelledby="dialog-title" (click)="$event.stopPropagation()">
     <header class="dialog-header">
       <div><p class="section-kicker">CODIMAC</p><h2 id="dialog-title">{{ title }}</h2></div>
-      <button class="icon-button" type="button" (click)="close()" aria-label="Cerrar formulario"><codimac-icon name="close" /></button>
+      <button class="icon-button" type="button" (click)="close()" [disabled]="loading()" aria-label="Cerrar formulario"><codimac-icon name="close" /></button>
     </header>
-    <form (submit)="save($event)" [attr.novalidate]="kind === 'inventory-entry' || kind === 'inventory-adjust' || kind === 'user' ? '' : null">
-      <div class="dialog-body">
+    <form novalidate (submit)="save($event)">
+      <div class="dialog-body" [attr.aria-busy]="loading()">
+        @if (formError()) {
+          <div class="alert error form-banner" role="alert"><strong><codimac-icon name="xCircle" [size]="16" /> No se pudo guardar</strong><span>{{ formError() }}</span></div>
+        }
+        @if (catalogLoading() && kind !== "resources") {
+          <p class="loading-note">Conectando…</p>
+        }
         @if (kind === "order") {
           <div class="dialog-grid order-details-grid">
-            <label>Cliente<select name="clientId" [(ngModel)]="clientId" required><option value="">Selecciona un cliente</option>@for (client of clients(); track client.id) {<option [value]="client.id">{{ client.name }}</option>}</select></label>
-            <label>Fecha límite<input name="deadlineAt" type="datetime-local" [(ngModel)]="deadlineAt" /></label>
+            <label [class.field-invalid]="error('clientId')">Cliente
+              <select data-error-key="clientId" name="clientId" [(ngModel)]="clientId" (ngModelChange)="revalidate()" (blur)="touch('clientId')" [attr.aria-invalid]="error('clientId') ? 'true' : null" aria-describedby="err-clientId">
+                <option value="">Elige un cliente</option>
+                @for (client of clients(); track client.id) {<option [value]="client.id">{{ client.name }}</option>}
+              </select>
+              @if (error("clientId"); as message) {<span id="err-clientId" class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('deadlineAt')">Fecha límite (opcional)
+              <input data-error-key="deadlineAt" name="deadlineAt" type="datetime-local" [min]="minDeadline" [(ngModel)]="deadlineAt" (ngModelChange)="revalidate()" (blur)="touch('deadlineAt')" [attr.aria-invalid]="error('deadlineAt') ? 'true' : null" aria-describedby="err-deadlineAt" />
+              @if (error("deadlineAt"); as message) {<span id="err-deadlineAt" class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
           </div>
           <section class="order-lines-section" aria-label="Productos del pedido">
             <div class="order-lines-heading">
-              <div><h3>Productos</h3><p>Agrega los productos y cantidades del pedido.</p></div>
+              <div><h3>Productos</h3><p>Cada línea muestra el disponible en vivo; no se puede pedir más de lo disponible.</p></div>
               <span>{{ orderItems.length }} {{ orderItems.length === 1 ? "línea" : "líneas" }}</span>
             </div>
+            @if (error("items"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
             <div class="order-lines-scroll">
               <div class="order-line-header" aria-hidden="true">
-                <span>Producto</span><span>Cantidad</span><span>Stock disponible</span><span>Cantidad × unidad</span><span></span>
+                <span>Producto</span><span>Cantidad</span><span>Disponible</span><span>Cantidad × unidad</span><span></span>
               </div>
               @for (item of orderItems; track $index; let i = $index) {
-                <div class="order-line">
+                <div class="order-line" [class.line-invalid]="error('lineas[' + i + '].cantidad') || error('lineas[' + i + '].producto')">
                   <div class="order-line-product">
-                    <select [name]="'productId-' + i" [attr.aria-label]="'Producto ' + (i + 1)" [(ngModel)]="item.productId" (ngModelChange)="clearOrderErrors()" required>
-                      <option value="">Selecciona un producto</option>
+                    <select [attr.data-error-key]="'lineas[' + i + '].producto'" [name]="'productId-' + i" [attr.aria-label]="'Producto ' + (i + 1)" [(ngModel)]="item.productId" (ngModelChange)="revalidate()" (blur)="touch('lineas[' + i + '].producto')" [attr.aria-invalid]="error('lineas[' + i + '].producto') ? 'true' : null">
+                      <option value="">Elige un producto</option>
                       @for (product of products(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}
                     </select>
+                    @if (error("lineas[" + i + "].producto"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
                   </div>
                   <div class="order-line-quantity">
-                    <input [name]="'quantity-' + i" [attr.aria-label]="'Cantidad del producto ' + (i + 1)" [attr.aria-invalid]="orderItemError(i) ? 'true' : null" type="number" min="0.001" step="0.001" [(ngModel)]="item.quantity" (ngModelChange)="clearOrderErrors()" required />
-                    @if (orderItemError(i); as error) {<span class="order-field-error" role="alert">{{ error }}</span>}
+                    <input [attr.data-error-key]="'lineas[' + i + '].cantidad'" [name]="'quantity-' + i" [attr.aria-label]="'Cantidad del producto ' + (i + 1)" [attr.aria-invalid]="error('lineas[' + i + '].cantidad') ? 'true' : null" type="number" inputmode="numeric" min="1" step="1" [(ngModel)]="item.quantity" (ngModelChange)="revalidate()" (blur)="touch('lineas[' + i + '].cantidad')" />
+                    @if (error("lineas[" + i + "].cantidad"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
                   </div>
                   <div class="order-line-stock">
-                    <span class="order-line-mobile-label">Stock disponible</span>
-                    <strong>{{ availableStock(item.productId) | numero }}</strong>
+                    <span class="order-line-mobile-label">Disponible</span>
+                    <strong>{{ item.productId ? (availableStock(item.productId) | numero) : "—" }}</strong>
                     <small>{{ productUnit(item.productId) }}</small>
                   </div>
                   <div class="order-line-subtotal">
@@ -54,99 +71,162 @@
         } @else if (kind === "client") {
           <div class="client-editor-columns">
             <div class="client-editor-column">
-              <label>Nombre<input name="name" [(ngModel)]="name" required /></label>
-              <label>Teléfono de contacto<input name="contact" type="tel" inputmode="numeric" pattern="9[0-9]{8}" minlength="9" maxlength="9" [(ngModel)]="contact" (ngModelChange)="clearClientErrors()" required /><small>Celular de 9 dígitos que empieza con 9.</small></label>
+              <label [class.field-invalid]="error('name')">Nombre
+                <input data-error-key="name" name="name" maxlength="100" [(ngModel)]="name" (ngModelChange)="revalidate()" (blur)="touch('name')" [attr.aria-invalid]="error('name') ? 'true' : null" />
+                @if (error("name"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label [class.field-invalid]="error('contact')">Teléfono de contacto
+                <input data-error-key="contact" name="contact" type="tel" inputmode="numeric" maxlength="9" placeholder="987654321" [(ngModel)]="contact" (ngModelChange)="revalidate()" (blur)="touch('contact')" [attr.aria-invalid]="error('contact') ? 'true' : null" />
+                @if (error("contact"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>} @else {<small class="field-hint">Celular de 9 dígitos que empieza con 9. Se usa para el portal del cliente.</small>}
+              </label>
             </div>
             <div class="client-editor-column">
-              <label>Dirección<input #clientAddressInput name="address" minlength="5" maxlength="150" [(ngModel)]="address" (ngModelChange)="clearClientErrors()" required placeholder="Escribe una dirección o elige un punto en el mapa" /></label>
-              <label>Referencia de ubicación (opcional)<input name="reference" [(ngModel)]="reference" maxlength="150" placeholder="Frente al mercado, portón verde" /></label>
+              <label [class.field-invalid]="error('address')">Dirección
+                <input #clientAddressInput data-error-key="address" name="address" maxlength="150" [(ngModel)]="address" (ngModelChange)="revalidate()" (blur)="touch('address')" [attr.aria-invalid]="error('address') ? 'true' : null" placeholder="Escribe la dirección y elige una sugerencia" />
+                @if (error("address"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label [class.field-invalid]="error('reference')">Referencia de ubicación (opcional)
+                <input data-error-key="reference" name="reference" [(ngModel)]="reference" (ngModelChange)="revalidate()" (blur)="touch('reference')" maxlength="150" placeholder="Frente al mercado, portón verde" />
+                @if (error("reference"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
             </div>
           </div>
-          <section class="client-map-card" aria-label="Ubicación del cliente">
-            <div class="client-map-heading"><codimac-icon name="pin" [size]="18" /><div><strong>Ubicación en el mapa</strong><span>Marca el destino o arrastra el pin para actualizarlo.</span></div></div>
-            <codimac-map-location-picker class="client-map-picker" [showAddressInput]="false" [externalAddressInput]="clientAddressInput" [address]="address" [latitude]="latitude" [longitude]="longitude" (addressChange)="address = $event; clearClientErrors()" (locationChange)="updateLocation($event)" />
+          <section class="client-map-card" [class.field-invalid]="error('location')" aria-label="Ubicación del cliente">
+            <div class="client-map-heading"><codimac-icon name="pin" [size]="18" /><div><strong>Ubicación en el mapa (obligatoria)</strong><span>Haz clic en el mapa o arrastra el marcador.</span></div></div>
+            <codimac-map-location-picker class="client-map-picker" [showAddressInput]="false" [externalAddressInput]="clientAddressInput" [address]="address" [latitude]="latitude" [longitude]="longitude" (addressChange)="address = $event; revalidate()" (locationChange)="updateLocation($event)" />
             <div class="client-coordinate-grid">
-              <label>Latitud <codimac-icon name="lock" [size]="13" /><input name="latitude" type="number" step="0.000001" [ngModel]="latitude" readonly /></label>
-              <label>Longitud <codimac-icon name="lock" [size]="13" /><input name="longitude" type="number" step="0.000001" [ngModel]="longitude" readonly /></label>
+              <label>Latitud <codimac-icon name="lock" [size]="13" /><input data-error-key="location" name="latitude" type="text" [value]="latitude ?? 'Sin marcar'" readonly tabindex="-1" /></label>
+              <label>Longitud <codimac-icon name="lock" [size]="13" /><input name="longitude" type="text" [value]="longitude ?? 'Sin marcar'" readonly tabindex="-1" /></label>
             </div>
-            @if (serviceAreaWarning; as warning) {<p class="alert warning client-map-warning" role="status"><codimac-icon name="pin" [size]="16" />{{ warning.message }}</p>}
-            @for (error of clientErrors(); track error) {<p class="dialog-field-error client-map-error" role="alert"><codimac-icon name="xCircle" [size]="15" />{{ error }}</p>}
+            @if (error("location"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            @if (serviceAreaWarning; as warning) {<p class="alert warning client-map-warning" role="status"><codimac-icon name="pin" [size]="16" />{{ warning.message }} Puedes guardar igualmente.</p>}
           </section>
         } @else if (kind === "inventory-entry" || kind === "inventory-adjust") {
           @if (kind === "inventory-adjust") {
-            <section class="inventory-adjust-summary" aria-label="Resumen de existencias del producto seleccionado">
+            <section class="inventory-adjust-summary" aria-label="Existencias del producto seleccionado">
               <p>Existencias del producto</p>
               <div><span>Existencias<strong>{{ selectedInventoryProduct?.total_stock | numero }}</strong><small>{{ productUnit(productId) }}</small></span><span>Reservadas<strong>{{ selectedInventoryProduct?.reserved_stock | numero }}</strong><small>{{ productUnit(productId) }}</small></span><span>Disponibles<strong>{{ selectedInventoryAvailable | numero }}</strong><small>{{ productUnit(productId) }}</small></span></div>
             </section>
           }
           <div class="dialog-grid">
-            <label>Producto<select name="productId" [(ngModel)]="productId" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('productId') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('productId') ? 'inventory-product-error' : null"><option value="">Selecciona un producto</option>@for (product of inventoryProducts(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}</select>
-              @if (inventoryFieldError("productId"); as error) {<span id="inventory-product-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+            <label [class.field-invalid]="error('productId')">Producto
+              <select data-error-key="productId" name="productId" [(ngModel)]="productId" (ngModelChange)="revalidate()" (blur)="touch('productId')" [attr.aria-invalid]="error('productId') ? 'true' : null">
+                <option value="">Elige un producto</option>
+                @for (product of products(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}
+              </select>
+              @if (error("productId"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
             </label>
-            <label>Cantidad<input name="quantity" type="number" min="0.001" step="0.001" [(ngModel)]="quantity" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('quantity') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('quantity') ? 'inventory-quantity-error' : null" />
-              @if (inventoryFieldError("quantity"); as error) {<span id="inventory-quantity-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+            <label [class.field-invalid]="error('quantity')">Cantidad
+              <input data-error-key="quantity" name="quantity" type="number" inputmode="numeric" min="1" step="1" [(ngModel)]="quantity" (ngModelChange)="revalidate()" (blur)="touch('quantity')" [attr.aria-invalid]="error('quantity') ? 'true' : null" />
+              @if (error("quantity"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
             </label>
             @if (kind === "inventory-entry") {
-              <label class="full">Observación (opcional)<textarea name="observation" [(ngModel)]="observation" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('observation') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('observation') ? 'inventory-observation-error' : null"></textarea>
-                @if (inventoryFieldError("observation"); as error) {<span id="inventory-observation-error" class="dialog-field-error" role="alert">{{ error }}</span>}
+              <label class="full" [class.field-invalid]="error('observation')">Observación (opcional)
+                <textarea data-error-key="observation" name="observation" maxlength="500" [(ngModel)]="observation" (ngModelChange)="revalidate()" placeholder="Ej.: recepción de proveedor"></textarea>
+                @if (error("observation"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
               </label>
             } @else {
-              <fieldset class="adjustment-direction-field full" [attr.aria-invalid]="inventoryFieldError('direction') ? 'true' : null">
+              <fieldset class="adjustment-direction-field full" [class.field-invalid]="error('direction')">
                 <legend>Tipo de ajuste</legend>
                 <div class="segmented-control" role="group" aria-label="Tipo de ajuste">
-                  <button type="button" [attr.aria-pressed]="adjustmentDirection === 'Aumentar'" [class.active]="adjustmentDirection === 'Aumentar'" (click)="setAdjustmentDirection('Aumentar')">Aumentar (+)</button>
+                  <button data-error-key="direction" type="button" [attr.aria-pressed]="adjustmentDirection === 'Aumentar'" [class.active]="adjustmentDirection === 'Aumentar'" (click)="setAdjustmentDirection('Aumentar')">Aumentar (+)</button>
                   <button type="button" [attr.aria-pressed]="adjustmentDirection === 'Disminuir'" [class.active]="adjustmentDirection === 'Disminuir'" (click)="setAdjustmentDirection('Disminuir')">Disminuir (−)</button>
                 </div>
-                @if (inventoryFieldError("direction"); as error) {<span class="dialog-field-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ error }}</span>}
+                @if (error("direction"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
               </fieldset>
-              <label class="full">Motivo<select name="reason" [(ngModel)]="reason" (ngModelChange)="clearInventoryErrors()" [attr.aria-invalid]="inventoryFieldError('reason') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('reason') ? 'inventory-reason-error' : null"><option value="">Selecciona un motivo</option><option value="Conteo físico">Conteo físico</option><option value="Merma o daño">Merma o daño</option><option value="Corrección de registro">Corrección de registro</option><option value="Otro">Otro</option></select>
-                @if (inventoryFieldError("reason"); as error) {<span id="inventory-reason-error" class="dialog-field-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ error }}</span>}
+              <label class="full" [class.field-invalid]="error('reason')">Motivo
+                <select data-error-key="reason" name="reason" [(ngModel)]="reason" (ngModelChange)="revalidate()" (blur)="touch('reason')" [attr.aria-invalid]="error('reason') ? 'true' : null">
+                  <option value="">Elige el motivo</option>
+                  @for (option of reasons; track option) {<option [value]="option">{{ option }}</option>}
+                </select>
+                @if (error("reason"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
               </label>
               @if (reason === "Otro") {
-                <div class="adjustment-detail full">
-                  <label>Detalle obligatorio<textarea name="detail" [(ngModel)]="detail" (ngModelChange)="clearInventoryErrors()" minlength="5" maxlength="120" [attr.aria-invalid]="inventoryFieldError('detail') ? 'true' : null" [attr.aria-describedby]="inventoryFieldError('detail') ? 'inventory-detail-error' : null" placeholder="Describe el motivo del ajuste"></textarea></label>
-                  @if (inventoryFieldError("detail"); as error) {<span id="inventory-detail-error" class="dialog-field-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ error }}</span>}
-                </div>
+                <label class="full" [class.field-invalid]="error('detail')">Detalle del motivo
+                  <textarea data-error-key="detail" name="detail" [(ngModel)]="detail" (ngModelChange)="revalidate()" (blur)="touch('detail')" maxlength="120" [attr.aria-invalid]="error('detail') ? 'true' : null" placeholder="Describe el motivo del ajuste (5 a 120 caracteres)"></textarea>
+                  @if (error("detail"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+                </label>
               }
-              <div class="inventory-adjust-preview full" [class.negative]="adjustmentBelowReserved"><span>Nuevas existencias</span><strong>{{ adjustmentPreview | numero }}</strong><small>{{ productUnit(productId) }}</small></div>
+              <div class="inventory-adjust-preview full" [class.negative]="adjustmentBelowReserved"><span>Existencias después del ajuste</span><strong>{{ adjustmentPreview | numero }}</strong><small>{{ productUnit(productId) }}</small></div>
             }
           </div>
         } @else if (kind === "user") {
           <div class="dialog-grid">
-            <label [class.field-invalid]="userFieldError('name') || (userNameModel.invalid && userNameModel.touched)">Nombre completo<input #userNameModel="ngModel" name="name" [(ngModel)]="name" (ngModelChange)="clearUserFieldError('name')" required minlength="2" />
-              @if (userFieldError('name') || (userNameModel.invalid && userNameModel.touched)) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ userFieldError('name') || "Ingresa el nombre completo." }}</span>}
+            <label [class.field-invalid]="error('name')">Nombre completo
+              <input data-error-key="name" name="name" maxlength="80" autocomplete="off" [(ngModel)]="name" (ngModelChange)="revalidate()" (blur)="touch('name')" [attr.aria-invalid]="error('name') ? 'true' : null" />
+              @if (error("name"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
             </label>
-            <label [class.field-invalid]="userFieldError('email') || (userEmailModel.invalid && userEmailModel.touched)">Correo<input #userEmailModel="ngModel" name="email" type="email" [(ngModel)]="email" (ngModelChange)="clearUserFieldError('email')" required />
-              @if (userFieldError('email') || (userEmailModel.invalid && userEmailModel.touched)) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ userFieldError('email') || "Ingresa un correo válido." }}</span>}
+            <label [class.field-invalid]="error('email')">Correo
+              <input data-error-key="email" name="email" type="email" autocomplete="off" [(ngModel)]="email" (ngModelChange)="revalidate()" (blur)="touch('email')" [attr.aria-invalid]="error('email') ? 'true' : null" />
+              @if (error("email"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
             </label>
-            <label [class.field-invalid]="userFieldError('password') || (userPasswordModel.invalid && userPasswordModel.touched)">Contraseña temporal<input #userPasswordModel="ngModel" name="password" type="password" [(ngModel)]="password" (ngModelChange)="clearUserFieldError('password')" minlength="10" required />
-              @if (userFieldError('password') || (userPasswordModel.invalid && userPasswordModel.touched)) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ userFieldError('password') || "La contraseña debe tener al menos 10 caracteres." }}</span>}
+            <label [class.field-invalid]="error('password')">Contraseña temporal
+              <input data-error-key="password" name="password" type="password" autocomplete="new-password" [(ngModel)]="password" (ngModelChange)="revalidate()" (blur)="touch('password')" [attr.aria-invalid]="error('password') ? 'true' : null" />
+              @if (error("password"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>} @else {<small class="field-hint">Mínimo 8 caracteres, con letras y números.</small>}
             </label>
-            <label>Rol<select name="role" [(ngModel)]="role"><option>Despachador</option><option>Chofer</option><option>Administrador</option></select></label>
+            <label [class.field-invalid]="error('role')">Rol
+              <select data-error-key="role" name="role" [(ngModel)]="role" (ngModelChange)="revalidate()" (blur)="touch('role')" [attr.aria-invalid]="error('role') ? 'true' : null">
+                <option value="">Elige un rol</option>
+                @for (option of roles; track option) {<option [value]="option">{{ option }}</option>}
+              </select>
+              @if (error("role"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
             @if (role === "Chofer") {
-              <label class="full" [class.field-invalid]="userFieldError('phone')">Celular del chofer<input name="phone" type="tel" inputmode="numeric" maxlength="9" placeholder="9 dígitos" [(ngModel)]="phone" (ngModelChange)="clearUserFieldError('phone')" />
-                @if (userFieldError('phone'); as error) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ error }}</span>}
+              <label class="full" [class.field-invalid]="error('phone')">Celular del chofer (opcional)
+                <input data-error-key="phone" name="phone" type="tel" inputmode="numeric" maxlength="9" placeholder="9 dígitos" [(ngModel)]="phone" (ngModelChange)="revalidate()" (blur)="touch('phone')" [attr.aria-invalid]="error('phone') ? 'true' : null" />
+                @if (error("phone"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
               </label>
             }
           </div>
         } @else if (kind === "product") {
           <div class="dialog-grid">
-            <label class="full">Nombre del producto<input name="name" [(ngModel)]="name" required /></label>
-            <label>Unidad<input name="unit" [(ngModel)]="unit" required /></label>
-            <label>Peso unitario (kg)<input name="weightKg" type="number" min="0" step="0.001" [(ngModel)]="weightKg" required /></label>
-            <label>Stock inicial<input name="totalStock" type="number" min="0" step="0.001" [(ngModel)]="totalStock" required /></label>
+            <label class="full" [class.field-invalid]="error('name')">Nombre del producto
+              <input data-error-key="name" name="name" maxlength="80" [(ngModel)]="name" (ngModelChange)="revalidate()" (blur)="touch('name')" [attr.aria-invalid]="error('name') ? 'true' : null" />
+              @if (error("name"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('unit')">Unidad
+              <select data-error-key="unit" name="unit" [(ngModel)]="unit" (ngModelChange)="revalidate()" (blur)="touch('unit')" [attr.aria-invalid]="error('unit') ? 'true' : null">
+                <option value="">Elige la unidad</option>
+                @for (option of units; track option) {<option [value]="option">{{ option }}</option>}
+              </select>
+              @if (error("unit"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('weightKg')">Peso unitario (kg)
+              <input data-error-key="weightKg" name="weightKg" type="number" inputmode="decimal" min="0.001" step="0.001" [(ngModel)]="weightKg" (ngModelChange)="revalidate()" (blur)="touch('weightKg')" [attr.aria-invalid]="error('weightKg') ? 'true' : null" />
+              @if (error("weightKg"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('totalStock')">Stock inicial
+              <input data-error-key="totalStock" name="totalStock" type="number" inputmode="numeric" min="0" step="1" [(ngModel)]="totalStock" (ngModelChange)="revalidate()" (blur)="touch('totalStock')" [attr.aria-invalid]="error('totalStock') ? 'true' : null" />
+              @if (error("totalStock"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
           </div>
         } @else if (kind === "vehicle") {
           <div class="dialog-grid">
-            <label>Placa<input name="plate" [(ngModel)]="plate" required /></label>
-            <label>Tipo<select name="vehicleType" [(ngModel)]="vehicleType"><option>Camioneta</option><option>Camión</option></select></label>
-            <label>Capacidad (kg)<input name="capacityKg" type="number" min="1" [(ngModel)]="capacityKg" required /></label>
-            <label>Velocidad promedio (km/h)<input name="averageSpeedKmh" type="number" min="1" [(ngModel)]="averageSpeedKmh" required /></label>
-            <label>Rendimiento (km/L)<input name="fuelEfficiencyKmL" type="number" min="0.1" step="0.1" [(ngModel)]="fuelEfficiencyKmL" required /></label>
+            <label [class.field-invalid]="error('plate')">Placa
+              <input data-error-key="plate" name="plate" maxlength="7" placeholder="ABC-123" autocapitalize="characters" [(ngModel)]="plate" (ngModelChange)="revalidate()" (blur)="touch('plate')" [attr.aria-invalid]="error('plate') ? 'true' : null" />
+              @if (error("plate"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('vehicleType')">Tipo
+              <select data-error-key="vehicleType" name="vehicleType" [(ngModel)]="vehicleType" (ngModelChange)="revalidate()">
+                @for (option of vehicleTypes; track option) {<option [value]="option">{{ option }}</option>}
+              </select>
+            </label>
+            <label [class.field-invalid]="error('capacityKg')">Capacidad de carga (kg)
+              <input data-error-key="capacityKg" name="capacityKg" type="number" inputmode="decimal" min="1" [(ngModel)]="capacityKg" (ngModelChange)="revalidate()" (blur)="touch('capacityKg')" [attr.aria-invalid]="error('capacityKg') ? 'true' : null" />
+              @if (error("capacityKg"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('averageSpeedKmh')">Velocidad promedio (km/h)
+              <input data-error-key="averageSpeedKmh" name="averageSpeedKmh" type="number" inputmode="decimal" min="5" max="120" [(ngModel)]="averageSpeedKmh" (ngModelChange)="revalidate()" (blur)="touch('averageSpeedKmh')" [attr.aria-invalid]="error('averageSpeedKmh') ? 'true' : null" />
+              @if (error("averageSpeedKmh"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label class="full" [class.field-invalid]="error('fuelEfficiencyKmL')">Rendimiento (km/L)
+              <input data-error-key="fuelEfficiencyKmL" name="fuelEfficiencyKmL" type="number" inputmode="decimal" min="0.1" max="50" step="0.1" [(ngModel)]="fuelEfficiencyKmL" (ngModelChange)="revalidate()" (blur)="touch('fuelEfficiencyKmL')" [attr.aria-invalid]="error('fuelEfficiencyKmL') ? 'true' : null" />
+              @if (error("fuelEfficiencyKmL"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
           </div>
         } @else if (kind === "resources") {
           @if (resourcesLoading()) {
-            <p>Cargando disponibilidad…</p>
+            <p class="loading-note">Conectando…</p>
           } @else if (resourceRows().length) {
             <div class="table-wrap resources-table">
               <table>
@@ -161,18 +241,16 @@
           } @else {
             <p>No hay choferes ni vehículos registrados como activos.</p>
           }
-        } @else if (kind === "notifications") {
-          <p>Las notificaciones de esta sesión aparecen al seleccionar la campana de la barra superior. Incluyen cambios de pedidos, repartos e incidencias.</p>
-        } @else {
-          <p>Esta acción no está disponible.</p>
         }
       </div>
       <footer class="dialog-footer">
         @if (kind === "order") {<span class="order-footer-summary">Cantidades totales: {{ orderQuantitySummary }}</span>}
-        <button class="button secondary" type="button" (click)="close()">{{ informational ? "Cerrar" : "Cancelar" }}</button>
-        @if (kind === "resources") {<button class="button primary" type="button" (click)="goToPlanning()">Ir a Planificar Reparto</button>}
+        <button class="button secondary" type="button" [disabled]="loading()" (click)="close()">{{ informational ? "Cerrar" : "Cancelar" }}</button>
+        @if (kind === "resources") {<button class="button primary" type="button" (click)="goToPlanning()">Ir a Repartos</button>}
         @if (!informational) {
-          <button class="button primary" type="submit" [disabled]="loading()">{{ loading() ? "Guardando…" : "Guardar" }}</button>
+          <button class="button primary" type="submit" [disabled]="loading()" [attr.aria-busy]="loading()">
+            @if (loading()) {<span class="spinner" aria-hidden="true"></span> Guardando…} @else {Guardar}
+          </button>
         }
       </footer>
     </form>

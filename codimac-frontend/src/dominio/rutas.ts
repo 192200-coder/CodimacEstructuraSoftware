@@ -56,7 +56,7 @@ function ordenVecinoMasCercano(origen: Coordenadas, destinos: DestinoRuta[]) {
   return orden
 }
 
-function medir(
+export function medirRecorrido(
   origen: Coordenadas,
   orden: DestinoRuta[],
   vehiculo: Vehiculo,
@@ -114,7 +114,7 @@ export function generarAlternativas(
       : [ordenVecinoMasCercano(origen, destinos)]
   const medidas = ordenes.map((orden) => ({
     orden,
-    ...medir(origen, orden, vehiculo, precioCombustible, minutosPorParada),
+    ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada),
   }))
   const maxTiempo = Math.max(...medidas.map((item) => item.tiempoMinutos))
   const maxCosto = Math.max(...medidas.map((item) => item.costoCombustible))
@@ -137,4 +137,33 @@ export function generarAlternativas(
       criterio,
       usaTraficoReal: false,
     }))
+}
+
+/**
+ * Recorrido de referencia (RN-09): las mismas paradas en orden de prioridad (RN-04),
+ * medidas con la misma matriz que la ruta elegida. Primero la fecha límite más próxima;
+ * los pedidos sin fecha límite van después, del más antiguo al más reciente.
+ */
+export function ordenarPorPrioridad<T extends { fechaLimite?: string; fechaPedido?: string }>(destinos: T[]): T[] {
+  const tiempo = (valor?: string) => {
+    const ms = valor ? Date.parse(valor) : Number.NaN
+    return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY
+  }
+  return [...destinos].sort((a, b) => {
+    const limiteA = tiempo(a.fechaLimite)
+    const limiteB = tiempo(b.fechaLimite)
+    if (limiteA !== limiteB) return limiteA - limiteB
+    return tiempo(a.fechaPedido) - tiempo(b.fechaPedido)
+  })
+}
+
+export function recorridoReferencia(
+  origen: Coordenadas,
+  destinos: DestinoRuta[],
+  vehiculo: Vehiculo,
+  precioCombustible: number,
+  minutosPorParada: number,
+) {
+  const orden = ordenarPorPrioridad(destinos)
+  return { orden, ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada) }
 }

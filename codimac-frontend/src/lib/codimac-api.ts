@@ -93,8 +93,23 @@ async function request<T = Record<string, unknown>>(
   }
   const token = authenticated ? localStorage.getItem(tokenKey) : null
   if (token) headers.set("Authorization", `Bearer ${token}`)
-  const response = await fetch(`${apiUrl}${path}`, { ...options, headers })
+  let response: Response
+  try {
+    response = await fetch(`${apiUrl}${path}`, { ...options, headers })
+  } catch {
+    throw new ApiRequestError(
+      "No se pudo conectar con CODIMAC. Revisa tu conexión e inténtalo de nuevo.",
+      "NETWORK_ERROR",
+      [],
+    )
+  }
   const body = await response.json().catch(() => null)
+  if (response.status === 401 && token) {
+    // Token vencido o sesión revocada: se limpia la sesión local y la interfaz vuelve al inicio.
+    localStorage.removeItem(tokenKey)
+    localStorage.removeItem(userKey)
+    publishAuth("SESSION_EXPIRED", null)
+  }
   if (!response.ok) {
     const apiError = body?.error
     if (apiError && typeof apiError === "object") {
@@ -224,6 +239,8 @@ export interface RemoteRouteSummary {
   estimated_minutes: number | string | null
   estimated_liters: number | string | null
   estimated_cost: number | string | null
+  reference_km?: number | string | null
+  reference_minutes?: number | string | null
   weight_kg: number | string
   driver_name: string | null
   vehicle_plate: string | null
@@ -333,6 +350,18 @@ export async function getOrders(): Promise<RemoteOrder[]> {
   return body.orders ?? []
 }
 
+export interface RemoteOrderEvent {
+  previous_status: string | null
+  new_status: string
+  created_at: string
+  actor?: string | null
+}
+
+export async function getOrderEvents(id: string): Promise<RemoteOrderEvent[]> {
+  const body = await request<{ events: RemoteOrderEvent[] }>(`/orders/${encodeURIComponent(id)}/events`)
+  return body.events
+}
+
 export async function prepareOrder(id: string) {
   return request(`/orders/${id}/prepare`, { method: "POST" })
 }
@@ -380,8 +409,8 @@ export async function createRoute(input: {
   estimatedMinutes: number
   estimatedLiters: number
   estimatedCost: number
-  driverId?: string
-  vehicleId?: string
+  referenceKm?: number
+  referenceMinutes?: number
 }): Promise<{ routeId: string; code: string; status: string }> {
   return request("/routes", { method: "POST", body: JSON.stringify(input) })
 }
@@ -393,6 +422,8 @@ export interface CreateRouteBatchRequest {
     estimatedMinutes: number
     estimatedLiters: number
     estimatedCost: number
+    referenceKm?: number
+    referenceMinutes?: number
     driverId: string
     vehicleId: string
   }>
@@ -408,7 +439,17 @@ export async function approveRoute(id: string): Promise<{ status: string }> {
   return request(`/routes/${encodeURIComponent(id)}/approve`, { method: "POST" })
 }
 
-export async function assignRoute(id: string, driverId: string, vehicleId: string) {
+export interface AssignmentNotice {
+  canal: "WhatsApp"
+  estado: "Enviado" | "Simulado" | "Fallido" | "No configurado"
+  detalle: string
+}
+
+export async function assignRoute(
+  id: string,
+  driverId: string,
+  vehicleId: string,
+): Promise<{ status: string; notification: AssignmentNotice }> {
   return request(`/routes/${id}/assign`, {
     method: "POST",
     body: JSON.stringify({ driverId, vehicleId }),
@@ -423,10 +464,10 @@ export async function startDriverRoute(id: string) {
   return request(`/routes/${id}/start`, { method: "POST" })
 }
 
-export async function deliverStop(id: string, receivedBy: string) {
+export async function deliverStop(id: string, receivedBy: string, observations?: string) {
   return request(`/stops/${id}/deliver`, {
     method: "POST",
-    body: JSON.stringify({ receivedBy }),
+    body: JSON.stringify({ receivedBy, ...(observations ? { observations } : {}) }),
   })
 }
 
@@ -558,8 +599,24 @@ export async function loadDemoData() {
   return request<{ loaded: boolean }>("/admin/demo-data", { method: "POST" })
 }
 
+export interface RemoteIndicator {
+  id: string
+  code: string
+  started_at: string | null
+  closed_at: string | null
+  distance_km: number | string | null
+  estimated_minutes: number | string | null
+  estimated_cost: number | string | null
+  estimated_liters?: number | string | null
+  reference_km?: number | string | null
+  reference_minutes?: number | string | null
+  delivered: number | string
+  not_delivered: number | string
+  incidents: number | string
+}
+
 export async function getIndicators() {
-  return request<{ indicators: Array<Record<string, string | number | null>> }>("/indicators")
+  return request<{ indicators: RemoteIndicator[] }>("/indicators")
 }
 
 export async function updateParameters(value: {

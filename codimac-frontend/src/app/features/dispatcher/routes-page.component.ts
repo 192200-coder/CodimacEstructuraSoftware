@@ -1,11 +1,10 @@
 import { Component, effect, signal, OnDestroy } from "@angular/core"
-import { DatePipe } from "@angular/common"
+import { FechaPipe } from "../../shared/fecha.pipe"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
-import type { RemoteOrder } from "../../../lib/codimac-api"
-import type { RemoteRouteSummary } from "../../../lib/codimac-api"
-import type { CriterioRuta } from "../../../dominio/modelos"
-import { generarAlternativas } from "../../../dominio/rutas"
+import type { AssignmentNotice, RemoteOrder, RemoteRouteSummary } from "../../../lib/codimac-api"
+import type { CriterioRuta, DestinoRuta, Vehiculo } from "../../../dominio/modelos"
+import { generarAlternativas, ordenarPorPrioridad, recorridoReferencia } from "../../../dominio/rutas"
 import {
   calcularAvisosFechaLimite,
   calcularPesoPedidosKg,
@@ -51,7 +50,7 @@ interface SplitGroup {
 @Component({
   selector: "codimac-routes-page",
   standalone: true,
-  imports: [DatePipe, IconComponent, NumeroPipe, StatusBadgeComponent],
+  imports: [FechaPipe, IconComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./routes-page.component.html",
 })
 export class RoutesPageComponent implements OnDestroy {
@@ -74,6 +73,9 @@ export class RoutesPageComponent implements OnDestroy {
   readonly pendingRoutes = signal<RemoteRouteSummary[]>([])
   readonly closedRoutes = signal<RemoteRouteSummary[]>([])
   readonly splitGroups = signal<SplitGroup[]>([])
+  readonly assignmentNotice = signal<AssignmentNotice | null>(null)
+  /** Confirmación propia (botón rojo) para retirar o cancelar un reparto sin salir. */
+  readonly pendingRetire = signal<{ id: string; code: string; status: string } | null>(null)
   private nextGroupKey = 1
 
   calcularPeso(order: RemoteOrder): string {
@@ -152,8 +154,15 @@ export class RoutesPageComponent implements OnDestroy {
     }, 15_000)
   }
 
+  /** RF-01.10: pedidos Listo ordenados por prioridad (RN-04). */
   get readyOrders(): RemoteOrder[] {
-    return this.orders().filter((order) => order.status === "Listo" && !order.active_route_id)
+    const ready = this.orders().filter((order) => order.status === "Listo" && !order.active_route_id)
+    const byId = new Map(ready.map((order) => [order.id, order]))
+    return ordenarPorPrioridad(ready.map((order) => ({
+      id: order.id,
+      ...(order.deadline_at ? { fechaLimite: order.deadline_at } : {}),
+      ...(order.ordered_at ? { fechaPedido: order.ordered_at } : {}),
+    }))).map(({ id }) => byId.get(id)!)
   }
 
   get deadlineWarnings(): string[] {
@@ -183,6 +192,60 @@ export class RoutesPageComponent implements OnDestroy {
     )
   }
 
+  private destinationsFor(orders: RemoteOrder[]): DestinoRuta[] {
+    return orders.flatMap((order) => {
+      const client = order.clients
+      if (client?.latitude === undefined || client.longitude === undefined) return []
+      return [{
+        id: order.id,
+        etiqueta: `${order.code} · ${client.name}`,
+        coordenadas: { latitud: Number(client.latitude), longitud: Number(client.longitude) },
+        ...(order.deadline_at ? { fechaLimite: order.deadline_at } : {}),
+        ...(order.ordered_at ? { fechaPedido: order.ordered_at } : {}),
+      }]
+    })
+  }
+
+  private estimationVehicle(resource: Resource): Vehiculo {
+    return {
+      id: resource.id,
+      placa: resource.plate ?? "",
+      capacidadKg: parsearKg(resource.capacity_kg),
+      velocidadPromedioKmh: Number(resource.average_speed_kmh),
+      rendimientoKmLitro: Number(resource.fuel_efficiency_km_l),
+      disponible: true,
+    }
+  }
+
+  /** RN-09: mismas paradas en orden de prioridad, con la misma matriz que la ruta elegida. */
+  private referenceFor(orders: RemoteOrder[], vehicle: Resource | undefined) {
+    const parameters = this.parameters()
+    const destinations = this.destinationsFor(orders)
+    if (!parameters || !vehicle?.average_speed_kmh || !destinations.length || destinations.length !== orders.length) {
+      return null
+    }
+    return recorridoReferencia(
+      { latitud: Number(parameters.warehouse_latitude), longitud: Number(parameters.warehouse_longitude) },
+      destinations,
+      this.estimationVehicle(vehicle),
+      Number(parameters.fuel_price),
+      Number(parameters.minutes_per_stop),
+    )
+  }
+
+  get reference() {
+    return this.referenceFor(this.selectedOrders, this.vehicleById(this.selectedVehicleId()))
+  }
+
+  get estimationVehiclePlate(): string {
+    return this.vehicleById(this.plannedVehicleId())?.plate ?? ""
+  }
+
+  setEstimationVehicle(event: Event): void {
+    this.selectedVehicleId.set((event.target as HTMLSelectElement).value)
+    this.selectedAlternative.set(0)
+  }
+
   get alternatives() {
     const orders = this.selectedOrders
     const parameters = this.parameters()
@@ -190,15 +253,7 @@ export class RoutesPageComponent implements OnDestroy {
       (resource) => resource.id === this.selectedVehicleId(),
     )
     if (!orders.length || !parameters || !vehicle?.average_speed_kmh || !vehicle.fuel_efficiency_km_l) return []
-    const destinations = orders.flatMap((order) => {
-      const client = order.clients
-      if (client?.latitude === undefined || client.longitude === undefined) return []
-      return [{
-        id: order.id,
-        etiqueta: `${order.code} · ${client.name}`,
-        coordenadas: { latitud: Number(client.latitude), longitud: Number(client.longitude) },
-      }]
-    })
+    const destinations = this.destinationsFor(orders)
     if (destinations.length !== orders.length) return []
     const cacheKey = JSON.stringify([
       destinations.map((destination) => [
@@ -220,14 +275,7 @@ export class RoutesPageComponent implements OnDestroy {
     this.alternativeCache = generarAlternativas(
       { latitud: Number(parameters.warehouse_latitude), longitud: Number(parameters.warehouse_longitude) },
       destinations,
-      {
-        id: vehicle.id,
-        placa: vehicle.plate ?? "",
-        capacidadKg: parsearKg(vehicle.capacity_kg),
-        velocidadPromedioKmh: Number(vehicle.average_speed_kmh),
-        rendimientoKmLitro: Number(vehicle.fuel_efficiency_km_l),
-        disponible: true,
-      },
+      this.estimationVehicle(vehicle),
       Number(parameters.fuel_price),
       Number(parameters.minutes_per_stop),
       this.criterion(),
@@ -241,9 +289,10 @@ export class RoutesPageComponent implements OnDestroy {
       code: ["A", "B", "C"][index] ?? "A",
       title: ["Recomendada", "Alternativa", "Respaldo"][index] ?? "Alternativa",
       stops: route.orden.map((stop) => stop.etiqueta).join(" → "),
-      distance: `${route.distanciaKm.toFixed(1).replace(".", ",")} km`,
+      distance: `${route.distanciaKm.toFixed(1)} km`,
       time: `${Math.round(route.tiempoMinutos)} min`,
-      cost: `S/ ${route.costoCombustible.toFixed(2).replace(".", ",")}`,
+      liters: `${route.litros.toFixed(2)} L`,
+      cost: `S/ ${route.costoCombustible.toFixed(2)}`,
       distanceKm: route.distanciaKm,
       estimatedMinutes: Math.round(route.tiempoMinutos),
       estimatedLiters: route.litros,
@@ -508,29 +557,26 @@ export class RoutesPageComponent implements OnDestroy {
         ? generarAlternativas(
           { latitud: Number(parameters.warehouse_latitude), longitud: Number(parameters.warehouse_longitude) },
           destinations,
-          {
-            id: vehicle.id,
-            placa: vehicle.plate ?? "",
-            capacidadKg: parsearKg(vehicle.capacity_kg),
-            velocidadPromedioKmh: Number(vehicle.average_speed_kmh),
-            rendimientoKmLitro: Number(vehicle.fuel_efficiency_km_l),
-            disponible: true,
-          },
+          this.estimationVehicle(vehicle),
           Number(parameters.fuel_price),
           Number(parameters.minutes_per_stop),
           this.criterion(),
         )[0]
         : undefined
       if (!best) {
-        this.state.showToast("No se pudo calcular la secuencia de una ruta: revisa coordenadas y parámetros.")
+        this.state.showToast("No se pudo calcular la secuencia de una ruta: revisa coordenadas y parámetros.", "error")
         return
       }
+      const reference = this.referenceFor(this.groupOrders(group), vehicle)
       routes.push({
         orderIds: best.orden.map((stop) => stop.id),
         distanceKm: best.distanciaKm,
         estimatedMinutes: Math.round(best.tiempoMinutos),
         estimatedLiters: best.litros,
         estimatedCost: best.costoCombustible,
+        ...(reference
+          ? { referenceKm: reference.distanciaKm, referenceMinutes: Math.round(reference.tiempoMinutos) }
+          : {}),
         driverId: group.driverId,
         vehicleId: group.vehicleId,
       })
@@ -562,7 +608,8 @@ export class RoutesPageComponent implements OnDestroy {
   get canAssignRoute(): boolean {
     return !this.loading() &&
       this.selectedOrderIds().length > 0 &&
-      ["", "Calculada", "Aprobada"].includes(this.routeStatus()) &&
+      Boolean(this.routeId()) &&
+      this.routeStatus() === "Aprobada" &&
       Boolean(this.selectedDriverId()) &&
       Boolean(this.selectedVehicleId()) &&
       this.resources().drivers.some((driver) => driver.id === this.selectedDriverId()) &&
@@ -587,7 +634,7 @@ export class RoutesPageComponent implements OnDestroy {
       .filter((client) => client?.latitude !== undefined && client.longitude !== undefined)
       .map((client) => `${client!.latitude},${client!.longitude}`)
     if (!points.length) {
-      this.state.showToast("No hay coordenadas suficientes para mostrar esta ruta.")
+      this.state.showToast("No hay coordenadas suficientes para mostrar esta ruta.", "error")
       return
     }
     const origin = `${parameters.warehouse_latitude},${parameters.warehouse_longitude}`
@@ -612,7 +659,9 @@ export class RoutesPageComponent implements OnDestroy {
   openMonitor(route: RemoteRouteSummary): void {
     this.routeId.set(route.id)
     this.routeCode.set(route.code)
+    this.routeStatus.set(route.status)
     this.monitoredRoute.set(route)
+    this.assignmentNotice.set(null)
     this.step.set(3)
     this.startRouteMonitor()
   }
@@ -624,50 +673,78 @@ export class RoutesPageComponent implements OnDestroy {
     this.plannedVehicleId.set("")
     this.selectedOrderIds.set([])
     this.monitoredRoute.set(null)
+    this.assignmentNotice.set(null)
     this.step.set(0)
   }
 
   canGoToStep(target: number): boolean {
     if (target === this.step()) return true
     if (this.routeId()) {
-      const status = this.monitoredRoute()?.status
+      const status = this.monitoredRoute()?.status ?? this.routeStatus()
+      if (target === 2) return status === "Aprobada"
       return target === 3 && (status === "Asignada" || status === "En curso" || status === "Cerrada")
     }
     if (target === 0) return true
     if (target === 1) return this.selectedOrders.length > 0
-    if (target === 2) return this.selectedOrders.length > 0 && this.alternativeRows.length > 0
     return false
   }
 
   stepBlockedReason(target: number): string | null {
     if (this.canGoToStep(target)) return null
     if (target === 3) return "Disponible cuando exista un reparto asignado o en curso."
-    if (this.routeId()) return "Este reparto ya fue creado."
-    if (!this.selectedOrders.length) return "Selecciona al menos un pedido Listo."
-    return "Calcula una secuencia válida antes de continuar."
+    if (target === 2) return "Aprueba una ruta antes de asignar chofer y vehículo."
+    if (this.routeId()) return "Este reparto ya fue aprobado."
+    return "Selecciona al menos un pedido Listo."
   }
 
   goToStep(target: number): void {
     if (this.canGoToStep(target)) this.step.set(target)
   }
 
-  async continueToAssignment(): Promise<void> {
-    if (!this.selectedOrderIds().length) {
-      this.state.showToast("Selecciona al menos un pedido Listo.")
-      return
-    }
-    if (!this.alternativeRows.length) {
-      this.state.showToast("Completa la ubicación del almacén y los parámetros de ruta, y verifica las coordenadas de los clientes.")
-      return
-    }
+  get selectedSavingsMinutes(): number | null {
+    const alternative = this.alternativeRows[this.selectedAlternative()]
+    const reference = this.reference
+    if (!alternative || !reference) return null
+    return Math.round(reference.tiempoMinutos) - alternative.estimatedMinutes
+  }
+
+  /** P-D07 → paso 6 del flujo: guarda la alternativa elegida (Calculada) y la aprueba (Aprobada). */
+  async approveSelectedAlternative(): Promise<void> {
     const alternative = this.alternativeRows[this.selectedAlternative()]
     if (!alternative) {
-      this.state.showToast("No hay una alternativa de ruta disponible.")
+      this.state.showToast(
+        "Completa la ubicación del almacén y los parámetros de ruta, y verifica las coordenadas de los clientes.",
+        "error",
+      )
       return
     }
-    this.selectedOrderIds.set(alternative.orderIds)
+    if (this.capacityExceeded) {
+      this.state.showToast(
+        `El peso del reparto (${formatearKg(this.selectedWeightKg)} kg) supera la capacidad del vehículo (${formatearKg(this.selectedVehicleCapacity)} kg).`,
+        "error",
+      )
+      return
+    }
     this.loading.set(true)
     try {
+      const reference = this.reference
+      const created = await this.api.createRoute({
+        orderIds: alternative.orderIds,
+        distanceKm: alternative.distanceKm,
+        estimatedMinutes: alternative.estimatedMinutes,
+        estimatedLiters: alternative.estimatedLiters,
+        estimatedCost: alternative.estimatedCost,
+        ...(reference
+          ? { referenceKm: reference.distanciaKm, referenceMinutes: Math.round(reference.tiempoMinutos) }
+          : {}),
+      })
+      this.routeId.set(created.routeId)
+      this.routeCode.set(created.code)
+      this.routeStatus.set(created.status)
+      this.plannedVehicleId.set(this.selectedVehicleId())
+      this.selectedOrderIds.set(alternative.orderIds)
+      await this.api.approveRoute(created.routeId)
+      this.routeStatus.set("Aprobada")
       const resources = await this.api.getResources()
       this.resources.set(resources)
       if (!resources.drivers.some((driver) => driver.id === this.selectedDriverId())) {
@@ -677,141 +754,90 @@ export class RoutesPageComponent implements OnDestroy {
         this.selectedVehicleId.set(resources.vehicles[0]?.id ?? "")
       }
       this.step.set(2)
+      this.state.showToast(`Ruta ${created.code} aprobada con ${alternative.orderIds.length} paradas.`)
     } catch (error) {
-      this.state.showToast(error instanceof Error
-        ? `No se pudo actualizar la disponibilidad: ${error.message}`
-        : "No se pudo actualizar la disponibilidad de choferes y vehículos.")
+      const saved = this.routeId() ? `La ruta ${this.routeCode()} quedó en ${this.routeStatus()}. ` : ""
+      this.state.showToast(
+        `${saved}${error instanceof Error ? error.message : "No se pudo aprobar la ruta."}`,
+        "error",
+        6000,
+      )
+      await this.loadRouteData()
     } finally {
       this.loading.set(false)
     }
   }
 
+  /** Paso 7 del flujo: asigna chofer y vehículo a la ruta Aprobada y muestra el resultado del aviso. */
   async confirmAssignment(): Promise<void> {
-    if (!this.state.isOnline()) {
-      this.state.showToast("Inicia sesión para asignar un reparto.")
+    const routeId = this.routeId()
+    if (!routeId || this.routeStatus() !== "Aprobada") {
+      this.state.showToast("Aprueba la ruta antes de asignar chofer y vehículo.", "error")
       return
     }
     if (!this.selectedDriverId() || !this.selectedVehicleId()) {
-      this.state.showToast("Selecciona un chofer y un vehículo cargados desde el backend.")
+      this.state.showToast("Elige un chofer y un vehículo disponibles.", "error")
       return
     }
-    const capacity = this.selectedVehicleCapacity
-    if (excedeCapacidadCarga(this.selectedWeightKg, capacity)) {
-      this.state.showToast("La carga del reparto supera la capacidad del vehículo seleccionado.")
+    if (excedeCapacidadCarga(this.selectedWeightKg, this.selectedVehicleCapacity)) {
+      this.state.showToast(
+        `El peso del reparto (${formatearKg(this.selectedWeightKg)} kg) supera la capacidad del vehículo (${formatearKg(this.selectedVehicleCapacity)} kg).`,
+        "error",
+      )
       return
     }
     this.loading.set(true)
     try {
-      let routeId = this.routeId()
-      if (!routeId) {
-        const alternative = this.alternativeRows[this.selectedAlternative()]
-        if (!alternative) throw new Error("No hay una secuencia de reparto disponible.")
-        const created = await this.api.createRoute({
-          orderIds: alternative.orderIds,
-          distanceKm: alternative.distanceKm,
-          estimatedMinutes: alternative.estimatedMinutes,
-          estimatedLiters: alternative.estimatedLiters,
-          estimatedCost: alternative.estimatedCost,
-        })
-        routeId = created.routeId
-        this.routeId.set(created.routeId)
-        this.routeCode.set(created.code)
-        this.routeStatus.set(created.status)
-        this.plannedVehicleId.set(this.selectedVehicleId())
-      }
-      if (this.routeStatus() === "Calculada") {
-        await this.api.approveRoute(routeId)
-        this.routeStatus.set("Aprobada")
-      }
-      if (this.routeStatus() !== "Aprobada") {
-        throw new Error(`La ruta no se puede asignar desde el estado ${this.routeStatus() || "desconocido"}.`)
-      }
-      await this.api.assignRoute(routeId, this.selectedDriverId(), this.selectedVehicleId())
+      const result = await this.api.assignRoute(routeId, this.selectedDriverId(), this.selectedVehicleId())
       this.routeStatus.set("Asignada")
+      this.assignmentNotice.set(result.notification ?? null)
     } catch (error) {
-      this.state.showToast(
-        error instanceof Error
-          ? `${this.routeId() ? `Ruta ${this.routeCode()} guardada en ${this.routeStatus()}. ` : ""}${error.message}`
-          : "No se pudo crear y asignar el reparto.",
-      )
+      this.state.showError(error, "No se pudo asignar el reparto.")
       try {
-        const [routes, resources] = await Promise.all([
-          this.api.getRoutes(),
-          this.api.getResources(),
-        ])
+        const [routes, resources] = await Promise.all([this.api.getRoutes(), this.api.getResources()])
         this.resources.set(resources)
-        const currentRoute = routes.find((route) => route.id === this.routeId())
+        const currentRoute = routes.find((route) => route.id === routeId)
         if (currentRoute) {
           this.routeStatus.set(currentRoute.status)
           this.monitoredRoute.set(currentRoute)
-          if (currentRoute.status === "Asignada" || currentRoute.status === "En curso") {
-            this.step.set(3)
-            this.state.showToast(`El reparto ${currentRoute.code} sí se asignó; se actualizó su estado desde el servidor.`)
-          }
+          if (currentRoute.status === "Asignada" || currentRoute.status === "En curso") this.step.set(3)
         }
-      } catch (refreshError) {
-        this.state.showToast(
-          refreshError instanceof Error
-            ? `No se pudo comprobar el estado/disponibilidad del reparto: ${refreshError.message}`
-            : "No se pudo comprobar el estado y disponibilidad del reparto.",
-        )
+      } catch {
+        // La siguiente carga del monitor vuelve a consultar el estado.
       }
       return
     } finally {
       this.loading.set(false)
     }
     this.step.set(3)
-    this.state.showToast(`Reparto ${this.routeCode()} aprobado, creado y asignado correctamente.`)
+    this.state.showToast(`Reparto ${this.routeCode()} asignado.`)
     await this.loadRouteData()
+    this.startRouteMonitor()
   }
 
-  async cancelPendingRoute(): Promise<void> {
-    const routeId = this.routeId()
-    if (!routeId) return
-    if (!window.confirm("¿Retirar este reparto sin asignar y liberar sus pedidos para volver a armarlos?")) return
-    this.loading.set(true)
-    try {
-      await this.api.cancelPendingRoute(routeId)
-      this.routeId.set("")
-      this.routeCode.set("")
-      this.routeStatus.set("")
-      this.plannedVehicleId.set("")
-      this.selectedOrderIds.set([])
-      this.step.set(0)
-      await this.loadRouteData()
-      this.state.showToast("Reparto retirado; los pedidos quedaron disponibles nuevamente.")
-    } catch (error) {
-      this.state.showToast(error instanceof Error ? error.message : "No se pudo retirar el reparto.")
-    } finally {
-      this.loading.set(false)
-    }
+  requestRetire(route: { id: string; code: string; status: string }): void {
+    this.pendingRetire.set(route)
   }
 
-  async retirePendingRoute(route: RemoteRouteSummary): Promise<void> {
+  closeRetire(): void {
+    if (!this.loading()) this.pendingRetire.set(null)
+  }
+
+  async confirmRetire(): Promise<void> {
+    const route = this.pendingRetire()
+    if (!route || this.loading()) return
     const assigned = route.status === "Asignada"
-    if (!window.confirm(assigned
-      ? `¿Cancelar el reparto ${route.code}? Se liberarán el chofer y el vehículo, y los pedidos volverán a estar disponibles.`
-      : `¿Retirar el reparto ${route.code} y liberar sus pedidos?`)) return
     this.loading.set(true)
     try {
       await this.api.cancelPendingRoute(route.id)
-      if (this.routeId() === route.id) {
-        this.routeId.set("")
-        this.routeCode.set("")
-        this.routeStatus.set("")
-        this.selectedOrderIds.set([])
-        this.step.set(0)
-      }
+      this.pendingRetire.set(null)
+      if (this.routeId() === route.id) this.startNewRoute()
       await this.loadRouteData()
       this.state.showToast(assigned
         ? `Reparto ${route.code} cancelado; chofer y vehículo quedaron disponibles.`
-        : `Reparto ${route.code} retirado; sus pedidos quedaron disponibles para volver a planificarlos.`)
+        : `Reparto ${route.code} retirado; sus pedidos volvieron a Listo para planificarlos.`)
     } catch (error) {
-      this.state.showToast(
-        error instanceof Error
-          ? `No se pudo retirar el reparto: ${error.message}`
-          : "No se pudo retirar el reparto.",
-      )
+      this.state.showError(error, "No se pudo retirar el reparto.")
     } finally {
       this.loading.set(false)
     }
@@ -824,10 +850,18 @@ export class RoutesPageComponent implements OnDestroy {
       await this.loadRouteData()
       this.state.showToast(`Reparto ${route.code} aprobado.`)
     } catch (error) {
-      this.state.showToast(error instanceof Error ? error.message : "No se pudo aprobar el reparto.")
+      this.state.showError(error, "No se pudo aprobar el reparto.")
     } finally {
       this.loading.set(false)
     }
+  }
+
+  confirmedStopCount(route: RemoteRouteSummary | null): number {
+    return route?.route_stops.filter((stop) => stop.status === "Entregada" || stop.status === "No entregada").length ?? 0
+  }
+
+  incidentCount(route: RemoteRouteSummary | null): number {
+    return route?.route_stops.filter((stop) => stop.status === "Incidencia").length ?? 0
   }
 
   async assignRecoveredRoute(route: RemoteRouteSummary): Promise<void> {
@@ -849,17 +883,9 @@ export class RoutesPageComponent implements OnDestroy {
       this.monitoredRoute.set(route)
       this.step.set(2)
     } catch (error) {
-      this.state.showToast(
-        error instanceof Error
-          ? `No se pudo recuperar la ruta ${route.code}: ${error.message}`
-          : `No se pudo recuperar la ruta ${route.code}.`,
-      )
+      this.state.showError(error, `No se pudo recuperar la ruta ${route.code}.`)
     } finally {
       this.loading.set(false)
     }
-  }
-
-  async notifyDriver(): Promise<void> {
-    this.state.showToast("La asignación quedó registrada. No se envió un aviso al chofer porque no hay un proveedor configurado.")
   }
 }

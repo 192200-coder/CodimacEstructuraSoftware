@@ -1,52 +1,70 @@
 <div class="module-layout clients-layout">
   <section class="card client-list">
-    <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar cliente" placeholder="Buscar cliente" /></div><button class="button primary" type="button" (click)="state.action('Formulario de cliente nuevo abierto')">Nuevo</button></div>
-    @for (client of clients; track client.id; let i = $index) {
-      <button class="client-item" [class.selected]="selectedIndex() === i" type="button" (click)="selectedIndex.set(i)">
-        <div class="avatar">{{ client.name.slice(-1) }}</div><div><strong>{{ client.name }}</strong><span>{{ client.address }}</span></div><codimac-icon name="chevron" [size]="16" />
+    <div class="filterbar">
+      <div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar cliente" placeholder="Nombre, dirección o teléfono" [value]="search()" (input)="setSearch($event)" /></div>
+      <button class="button primary" type="button" (click)="state.openDialog('client')"><codimac-icon name="plus" [size]="16" /> Nuevo cliente</button>
+    </div>
+    @if (loadError()) {<div class="alert error" role="alert"><strong>No se pudieron cargar los clientes</strong><span>{{ loadError() }}</span></div>}
+    @for (client of clients; track client.id) {
+      <button class="client-item" [class.selected]="selectedId() === client.id" [class.highlight-row]="state.highlightedId() === client.id" type="button" [attr.aria-pressed]="selectedId() === client.id" (click)="select(client.id)">
+        <div class="avatar">{{ initials(client.name) }}</div><div><strong>{{ client.name }}</strong><span>{{ client.address }}</span></div><codimac-icon name="chevron" [size]="16" />
       </button>
     }
-    @if (!clients.length) {<p class="mobile-empty">{{ remoteLoaded() ? "No hay clientes registrados." : "Cargando clientes…" }}</p>}
+    @if (!clients.length) {<p class="mobile-empty">{{ !remoteLoaded() ? "Conectando…" : search() ? "No hay clientes que coincidan con la búsqueda." : "No hay clientes registrados." }}</p>}
   </section>
   @if (selected; as client) {<section class="card client-form">
     <div class="card-header"><div><p class="section-kicker">DATOS DEL CLIENTE</p><h2>{{ client.name }}</h2></div>@if (!editing()) {<button class="button secondary" type="button" (click)="beginEdit()">Editar</button>}</div>
     @if (editing() && draft) {
-      <form class="client-edit-form" (ngSubmit)="saveClient()">
+      <form class="client-edit-form" novalidate (ngSubmit)="saveClient()">
+        @if (formError()) {<div class="alert error form-banner" role="alert"><strong>No se pudo guardar</strong><span>{{ formError() }}</span></div>}
         <div class="client-editor-columns">
           <div class="client-editor-column">
-            <label>Nombre<input name="name" [(ngModel)]="draft.name" required /></label>
-            <label>Teléfono de contacto<input name="contact" type="tel" inputmode="numeric" pattern="9[0-9]{8}" minlength="9" maxlength="9" [(ngModel)]="draft.contact" required /><small>Celular de 9 dígitos que empieza con 9.</small></label>
+            <label [class.field-invalid]="error('name')">Nombre
+              <input data-error-key="name" name="name" maxlength="100" [(ngModel)]="draft.name" (blur)="validateField('name')" (ngModelChange)="error('name') && validateField('name')" [attr.aria-invalid]="error('name') ? 'true' : null" />
+              @if (error("name"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('contact')">Teléfono de contacto
+              <input data-error-key="contact" name="contact" type="tel" inputmode="numeric" maxlength="9" [(ngModel)]="draft.contact" (blur)="validateField('contact')" (ngModelChange)="error('contact') && validateField('contact')" [attr.aria-invalid]="error('contact') ? 'true' : null" />
+              @if (error("contact"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>} @else {<small class="field-hint">Celular de 9 dígitos que empieza con 9.</small>}
+            </label>
           </div>
           <div class="client-editor-column">
-            <label>Dirección<input #clientAddressInput name="address" minlength="5" maxlength="150" [(ngModel)]="draft.address" required /></label>
-            <label>Referencia de ubicación (opcional)<input name="reference" maxlength="150" [(ngModel)]="draft.reference" /></label>
+            <label [class.field-invalid]="error('address')">Dirección
+              <input #clientAddressInput data-error-key="address" name="address" maxlength="150" [(ngModel)]="draft.address" (blur)="validateField('address')" (ngModelChange)="error('address') && validateField('address')" [attr.aria-invalid]="error('address') ? 'true' : null" />
+              @if (error("address"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
+            <label [class.field-invalid]="error('reference')">Referencia de ubicación (opcional)
+              <input data-error-key="reference" name="reference" maxlength="150" [(ngModel)]="draft.reference" (blur)="validateField('reference')" />
+              @if (error("reference"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+            </label>
           </div>
         </div>
-        <section class="client-map-card" aria-label="Ubicación del cliente">
-          <div class="client-map-heading"><codimac-icon name="pin" [size]="18" /><div><strong>Ubicación en el mapa</strong><span>Marca el destino o arrastra el pin para actualizarlo.</span></div></div>
+        <section class="client-map-card" [class.field-invalid]="error('location')" aria-label="Ubicación del cliente">
+          <div class="client-map-heading"><codimac-icon name="pin" [size]="18" /><div><strong>Ubicación en el mapa</strong><span>Haz clic en el mapa o arrastra el marcador para actualizarla.</span></div></div>
           <codimac-map-location-picker class="client-map-picker" [showAddressInput]="false" [externalAddressInput]="clientAddressInput" [address]="draft.address" [latitude]="draft.latitude" [longitude]="draft.longitude" (addressChange)="draft.address = $event" (locationChange)="updateLocation($event)" />
           <div class="client-coordinate-grid">
-            <label>Latitud <codimac-icon name="lock" [size]="13" /><input name="latitude" type="number" step="0.000001" [ngModel]="draft.latitude" readonly /></label>
-            <label>Longitud <codimac-icon name="lock" [size]="13" /><input name="longitude" type="number" step="0.000001" [ngModel]="draft.longitude" readonly /></label>
+            <label>Latitud <codimac-icon name="lock" [size]="13" /><input data-error-key="location" name="latitude" type="text" [value]="draft.latitude" readonly tabindex="-1" /></label>
+            <label>Longitud <codimac-icon name="lock" [size]="13" /><input name="longitude" type="text" [value]="draft.longitude" readonly tabindex="-1" /></label>
           </div>
-          @if (serviceAreaWarning; as warning) {<p class="alert warning client-map-warning" role="status"><codimac-icon name="pin" [size]="16" />{{ warning.message }}</p>}
+          @if (error("location"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+          @if (serviceAreaWarning; as warning) {<p class="alert warning client-map-warning" role="status"><codimac-icon name="pin" [size]="16" />{{ warning.message }} Puedes guardar igualmente.</p>}
         </section>
         <footer class="client-edit-actions">
-          <button class="button secondary" type="button" (click)="cancelEdit()">Cancelar</button>
-          <button class="button primary" type="submit">Guardar cambios</button>
+          <button class="button secondary" type="button" [disabled]="saving()" (click)="cancelEdit()">Cancelar</button>
+          <button class="button primary" type="submit" [disabled]="saving()" [attr.aria-busy]="saving()">@if (saving()) {<span class="spinner" aria-hidden="true"></span> Guardando…} @else {Guardar cambios}</button>
         </footer>
       </form>
     } @else {
     <div class="form-grid">
       <label>Nombre<input [value]="client.name" readonly /></label>
-      <label>Contacto<input [value]="client.contact" readonly /></label>
-      <label class="full">Dirección exacta<input #viewAddressInput [value]="client.address" readonly /></label>
-      <label class="full">Referencia<input [value]="client.reference" readonly /></label>
+      <label>Teléfono de contacto<input [value]="client.contact || 'Sin teléfono'" readonly /></label>
+      <label class="full">Dirección<input #viewAddressInput [value]="client.address" readonly /></label>
+      <label class="full">Referencia<input [value]="client.reference || 'Sin referencia'" readonly /></label>
       <label>Latitud <codimac-icon name="lock" [size]="13" /><input [value]="client.latitude" readonly /></label>
       <label>Longitud <codimac-icon name="lock" [size]="13" /><input [value]="client.longitude" readonly /></label>
     </div>
     <section class="client-map-card" aria-label="Ubicación del cliente">
-      <div class="client-map-heading"><codimac-icon name="pin" [size]="18" /><div><strong>Ubicación en el mapa</strong><span>Haz clic o arrastra el pin para ajustar la ubicación; se abrirá la edición.</span></div></div>
+      <div class="client-map-heading"><codimac-icon name="pin" [size]="18" /><div><strong>Ubicación en el mapa</strong><span>Haz clic o arrastra el marcador para ajustar la ubicación; se abrirá la edición.</span></div></div>
       @for (view of [client]; track view.id) {
         <codimac-map-location-picker class="client-map-picker" [showAddressInput]="false" [externalAddressInput]="viewAddressInput" [address]="view.address" [latitude]="view.latitude" [longitude]="view.longitude" (locationChange)="editFromMap($event)" />
       }

@@ -46,6 +46,7 @@ export interface DestinoRuta {
   etiqueta: string
   coordenadas: Coordenadas
   fechaLimite?: string
+  fechaPedido?: string
 }
 
 export interface AlternativaRuta {

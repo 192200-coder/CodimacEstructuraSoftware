@@ -1,17 +1,21 @@
 @if (state.active() === "Sin acceso") {
-  <div class="access-stage"><section class="access-card denied"><div class="access-symbol"><codimac-icon name="close" [size]="28" /></div><p class="section-kicker">ACCESO RESTRINGIDO</p><h2>No tienes acceso a esta sección</h2><p>Tu rol actual no cuenta con permisos para consultar este contenido. Si consideras que es un error, contacta al administrador.</p><button class="button primary" type="button" (click)="state.changeRole('Acceso')">Volver al inicio de sesión</button></section></div>
+  <div class="access-stage"><section class="access-card denied"><div class="access-symbol"><codimac-icon name="lock" [size]="28" /></div><p class="section-kicker">ACCESO RESTRINGIDO</p><h2>No tienes acceso a esta sección</h2><p>Tu rol actual no cuenta con permisos para consultar este contenido. Si consideras que es un error, contacta al administrador.</p><button class="button primary" type="button" (click)="state.changeRole('Acceso')">Volver al inicio</button></section></div>
 } @else {
   <div class="access-stage"><section class="access-card">
     <div class="access-logo"><div class="brand-mark"><span>C</span></div><div><strong>CODIMAC</strong><small>Gestión logística</small></div></div>
     <p class="section-kicker">BIENVENIDO</p><h2>Inicia sesión</h2><p>Accede al panel correspondiente a tu rol.</p>
-    @if (loading()) {
-      <div class="login-skeleton" aria-label="Conectando"><div></div><div></div><div></div><span>Conectando…</span></div>
-    } @else {
-      @if (showError()) {<div class="alert error"><strong>No pudimos ingresar</strong><span>Revisa tus datos e inténtalo nuevamente.</span></div>}
-      <label class="access-field">Correo electrónico<input type="email" autocomplete="username" [(ngModel)]="email" /></label>
-      <label class="access-field">Contraseña<input type="password" autocomplete="current-password" [(ngModel)]="password" (keydown.enter)="login()" /></label>
-      <button class="button primary access-submit" type="button" (click)="login()">Ingresar</button>
-    }
-    <button class="variant-link" type="button" (click)="state.changeRole('Cliente')">Consultar como cliente</button>
+    <form novalidate (submit)="$event.preventDefault(); login()">
+      @if (loginError()) {<div class="alert error" role="alert"><strong>No pudimos ingresar</strong><span>{{ loginError() }}</span></div>}
+      <label class="access-field" [class.field-invalid]="error('email')">Correo electrónico
+        <input name="email" type="email" autocomplete="username" [disabled]="loading()" [(ngModel)]="email" (blur)="validateField('email')" [attr.aria-invalid]="error('email') ? 'true' : null" />
+        @if (error("email"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+      </label>
+      <label class="access-field" [class.field-invalid]="error('password')">Contraseña
+        <input name="password" type="password" autocomplete="current-password" [disabled]="loading()" [(ngModel)]="password" [attr.aria-invalid]="error('password') ? 'true' : null" />
+        @if (error("password"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+      </label>
+      <button class="button primary access-submit" type="submit" [disabled]="loading()" [attr.aria-busy]="loading()">@if (loading()) {<span class="spinner" aria-hidden="true"></span> Conectando…} @else {Ingresar}</button>
+    </form>
+    <button class="variant-link" type="button" (click)="state.changeRole('Cliente')">Consultar mi entrega como cliente</button>
   </section></div>
 }

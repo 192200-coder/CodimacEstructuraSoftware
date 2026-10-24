@@ -60,3 +60,13 @@ export function validarCapacidad(pesoKg: number, capacidadKg: number) {
     )
   }
 }
+
+export type NivelStock = "Sin stock" | "Stock bajo" | "Disponible"
+
+/** Stock bajo: lo disponible es menos del 20 % de las existencias (P-D05). */
+export function nivelStock(total: number, reservado: number): NivelStock {
+  const libre = total - reservado
+  if (libre <= 0) return "Sin stock"
+  if (libre < total * 0.2) return "Stock bajo"
+  return "Disponible"
+}

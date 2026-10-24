@@ -3,16 +3,19 @@ import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
-import type { RemoteOrder } from "../../../lib/codimac-api"
+import { FechaPipe } from "../../shared/fecha.pipe"
+import type { RemoteOrder, RemoteRouteSummary } from "../../../lib/codimac-api"
+import { alertasDePlazo, type AlertaPlazo } from "../../../dominio/prioridad-pedido"
 
 @Component({
   selector: "codimac-dashboard-page",
   standalone: true,
-  imports: [IconComponent, StatusBadgeComponent],
+  imports: [FechaPipe, IconComponent, StatusBadgeComponent],
   templateUrl: "./dashboard-page.component.html",
 })
 export class DashboardPageComponent {
   readonly orders = signal<RemoteOrder[]>([])
+  readonly routes = signal<RemoteRouteSummary[]>([])
   readonly resources = signal<{ drivers: Array<{ id: string; display_name: string }>; vehicles: Array<{ id: string }> }>({
     drivers: [],
     vehicles: [],
@@ -33,12 +36,25 @@ export class DashboardPageComponent {
   get metrics() {
     const orders = this.orders()
     return [
-      { label: "Pendientes", value: this.countOrders(orders, "Pendiente"), detail: "Pedidos registrados", tone: "neutral", icon: "clock" },
-      { label: "En preparación", value: this.countOrders(orders, "En preparación"), detail: "En almacén", tone: "amber", icon: "warehouse" },
-      { label: "Listos", value: this.countOrders(orders, "Listo"), detail: "Para asignar", tone: "blue", icon: "box" },
-      { label: "En ruta", value: this.countOrders(orders, "En ruta"), detail: "En reparto", tone: "indigo", icon: "truck" },
-      { label: "Entregados", value: this.countOrders(orders, "Entregado"), detail: "Pedidos completados", tone: "green", icon: "check" },
-    ]
+      { label: "Pendientes", status: "Pendiente", detail: "Por preparar", tone: "neutral", icon: "clock" },
+      { label: "En preparación", status: "En preparación", detail: "Unidades reservadas", tone: "amber", icon: "box" },
+      { label: "Listos", status: "Listo", detail: "Para armar reparto", tone: "blue", icon: "checkCircle" },
+      { label: "En ruta", status: "En ruta", detail: "En reparto", tone: "indigo", icon: "truck" },
+      { label: "Entregados", status: "Entregado", detail: "Completados", tone: "green", icon: "checkCheck" },
+      { label: "Cancelados", status: "Cancelado", detail: "Antes de salir", tone: "red", icon: "xCircle" },
+    ].map((metric) => ({ ...metric, value: this.countOrders(orders, metric.status) }))
+  }
+
+  get deadlineAlerts(): AlertaPlazo[] {
+    return alertasDePlazo(this.orders())
+  }
+
+  get activeRoutes(): RemoteRouteSummary[] {
+    return this.routes().filter((route) => route.status === "Asignada" || route.status === "En curso")
+  }
+
+  confirmedStops(route: RemoteRouteSummary): number {
+    return route.route_stops.filter((stop) => stop.status === "Entregada" || stop.status === "No entregada").length
   }
 
   private countOrders(orders: RemoteOrder[], status: string): number {
@@ -53,28 +69,24 @@ export class DashboardPageComponent {
       .slice(0, 5)
   }
 
-  formatDate(value: string | undefined): string {
-    if (!value) return "—"
-    return new Intl.DateTimeFormat("es-PE", {
-      dateStyle: "short",
-      timeZone: "America/Lima",
-    }).format(new Date(value))
+  filterOrders(status: string): void {
+    this.state.searchOrders(status)
   }
 
   private async loadDashboard(): Promise<void> {
     this.loading.set(true)
     this.loadError.set("")
     try {
-      const [orders, resources] = await Promise.all([
+      const [orders, resources, routes] = await Promise.all([
         this.api.getOrders(),
         this.api.getResources(),
+        this.api.getRoutes(),
       ])
       this.orders.set(orders)
       this.resources.set(resources)
+      this.routes.set(routes)
     } catch (error) {
-      const message = error instanceof Error ? error.message : "No se pudo cargar el panel."
-      this.loadError.set(message)
-      this.state.showToast(message)
+      this.loadError.set(error instanceof Error ? error.message : "No se pudo cargar el panel.")
     } finally {
       this.loading.set(false)
     }

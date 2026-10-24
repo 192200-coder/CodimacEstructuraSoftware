@@ -42,8 +42,10 @@ import { FormDialogComponent } from "./layout/form-dialog.component"
       <codimac-form-dialog />
     }
     @if (state.toast()) {
-      <div class="toast" role="status">
-        <codimac-icon name="check" [size]="18" /> {{ state.toast() }}
+      <div class="toast" [class]="'toast ' + state.toastTone()" [attr.role]="state.toastTone() === 'error' ? 'alert' : 'status'" aria-live="polite">
+        <codimac-icon [name]="state.toastTone() === 'error' ? 'alertTriangle' : state.toastTone() === 'info' ? 'bell' : 'check'" [size]="18" />
+        <span>{{ state.toast() }}</span>
+        <button class="toast-close" type="button" aria-label="Cerrar aviso" (click)="state.toast.set('')"><codimac-icon name="close" [size]="15" /></button>
       </div>
     }
   `,

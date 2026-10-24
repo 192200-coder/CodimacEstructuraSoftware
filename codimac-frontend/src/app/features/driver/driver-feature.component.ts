@@ -1,6 +1,6 @@
 import { Component, effect, OnDestroy, signal } from "@angular/core"
+import { FechaPipe } from "../../shared/fecha.pipe"
 import { DomSanitizer, type SafeResourceUrl } from "@angular/platform-browser"
-import { DatePipe } from "@angular/common"
 import { FormsModule } from "@angular/forms"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
@@ -17,19 +17,32 @@ import {
   driverDirectionsUrl,
   driverMapPreviewUrl,
 } from "../../../dominio/driver-links"
+import { iniciales, saludoPorHora } from "../../../dominio/formato"
+import {
+  CAUSAS_INCIDENCIA,
+  validarEntrega,
+  validarIncidencia,
+  type ErroresCampo,
+} from "../../../dominio/validaciones"
 
 @Component({
   selector: "codimac-driver",
   standalone: true,
-  imports: [DatePipe, FormsModule, IconComponent, NumeroPipe, StatusBadgeComponent],
+  imports: [FechaPipe, FormsModule, IconComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./driver-feature.component.html",
 })
 export class DriverFeatureComponent implements OnDestroy {
+  readonly causes = CAUSAS_INCIDENCIA
+  readonly initials = iniciales
   readonly screen = signal(0)
   readonly remoteRoute = signal<RemoteRoute | null>(null)
   readonly closedSummary = signal<RemoteRouteSummaryForDriver | null>(null)
+  readonly busy = signal(false)
+  readonly errors = signal<ErroresCampo>({})
+  readonly lastReceiver = signal("")
   receiver = ""
-  incidentCause = "Cliente ausente"
+  observations = ""
+  incidentCause = ""
   incidentNotes = ""
   private routeMonitorTimer: ReturnType<typeof setInterval> | null = null
   private hasLoadedRemoteRoute = false
@@ -56,6 +69,10 @@ export class DriverFeatureComponent implements OnDestroy {
     this.stopRoutePolling()
   }
 
+  get greeting(): string {
+    return `${saludoPorHora()}, ${this.state.userName().split(/\s+/)[0] ?? ""}`
+  }
+
   private async loadRoute(): Promise<void> {
     try {
       const route = await this.api.getDriverRoute()
@@ -72,12 +89,12 @@ export class DriverFeatureComponent implements OnDestroy {
         route?.status === "Asignada" &&
         route.id !== previousRoute?.id
       ) {
-        this.state.showToast(`Tienes un nuevo reparto asignado: ${route.code}.`)
+        this.state.showToast(`Tienes un nuevo reparto asignado: ${route.code}.`, "info")
       }
       this.hasLoadedRemoteRoute = true
     } catch (error) {
       const message = error instanceof Error ? error.message : "No se pudo cargar la ruta asignada."
-      if (message !== this.lastRouteLoadError) this.state.showToast(message)
+      if (message !== this.lastRouteLoadError) this.state.showToast(message, "error")
       this.lastRouteLoadError = message
     }
   }
@@ -92,6 +109,20 @@ export class DriverFeatureComponent implements OnDestroy {
     this.routeMonitorTimer = null
   }
 
+  get resolvedStops(): number {
+    return this.remoteRoute()?.route_stops.filter(
+      (stop) => stop.status === "Entregada" || stop.status === "No entregada",
+    ).length ?? 0
+  }
+
+  get totalStops(): number {
+    return this.remoteRoute()?.route_stops.length ?? 0
+  }
+
+  get progressPercent(): number {
+    return this.totalStops ? Math.round((this.resolvedStops / this.totalStops) * 100) : 0
+  }
+
   get activeRemoteStop(): RemoteStop | undefined {
     return this.remoteRoute()?.route_stops.find(
       (stop) => stop.status === "En camino",
@@ -100,7 +131,7 @@ export class DriverFeatureComponent implements OnDestroy {
 
   get currentRemoteStop(): RemoteStop | undefined {
     return this.activeRemoteStop ?? this.remoteRoute()?.route_stops.find(
-      (stop) => stop.status === "Pendiente",
+      (stop) => stop.status === "Pendiente" || stop.status === "Incidencia",
     )
   }
 
@@ -151,50 +182,86 @@ export class DriverFeatureComponent implements OnDestroy {
   get currentEta(): string {
     const eta = this.currentRemoteStop?.eta_at
     return eta
-      ? new Intl.DateTimeFormat("es-PE", { timeStyle: "short", timeZone: "America/Lima" }).format(new Date(eta))
+      ? new Intl.DateTimeFormat("es-PE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: "America/Lima" }).format(new Date(eta))
       : "Por confirmar"
+  }
+
+  error(field: string): string {
+    return this.errors()[field] ?? ""
+  }
+
+  goTo(screen: number): void {
+    this.errors.set({})
+    this.screen.set(screen)
+  }
+
+  openConfirmation(): void {
+    this.receiver = ""
+    this.observations = ""
+    this.goTo(3)
+  }
+
+  openIncident(): void {
+    this.incidentCause = ""
+    this.incidentNotes = ""
+    this.goTo(5)
+  }
+
+  validateDeliveryField(field: string): void {
+    const message = validarEntrega({ receivedBy: this.receiver, observations: this.observations })[field]
+    this.updateError(field, message)
+  }
+
+  validateIncidentField(field: string): void {
+    const message = validarIncidencia({ cause: this.incidentCause, notes: this.incidentNotes })[field]
+    this.updateError(field, message)
+  }
+
+  private updateError(field: string, message: string | undefined): void {
+    this.errors.update((errors) => {
+      const { [field]: _previous, ...rest } = errors
+      return message ? { ...rest, [field]: message } : rest
+    })
   }
 
   async startRoute(): Promise<void> {
     const route = this.remoteRoute()
     if (!route) {
-      this.state.showToast("No tienes una ruta asignada por el backend.")
+      this.state.showToast("No tienes una ruta asignada.", "error")
       return
     }
     if (route.status === "En curso") {
       this.screen.set(1)
       return
     }
-    if (route.status !== "Asignada") {
-      this.state.showToast("La ruta todavía no está asignada a este chofer.")
-      return
-    }
+    if (route.status !== "Asignada" || this.busy()) return
+    this.busy.set(true)
     try {
       await this.api.startDriverRoute(route.id)
       this.remoteRoute.set(await this.api.getDriverRoute())
-      this.state.showToast("Reparto iniciado; pedidos actualizados a En ruta.")
+      this.state.showToast("Reparto iniciado. Los pedidos pasaron a En ruta.")
+      this.screen.set(1)
     } catch (error) {
-      this.state.showToast(
-        error instanceof Error ? error.message : "No se pudo iniciar la ruta.",
-      )
-      return
+      this.state.showError(error, "No se pudo iniciar la ruta.")
+    } finally {
+      this.busy.set(false)
     }
-    this.screen.set(1)
   }
 
   async confirmDelivery(): Promise<void> {
-    if (!this.receiver.trim()) {
-      this.state.showToast("Ingresa el nombre de quien recibió.")
-      return
-    }
+    const errors = validarEntrega({ receivedBy: this.receiver, observations: this.observations })
+    this.errors.set(errors)
+    if (Object.keys(errors).length || this.busy()) return
     const stop = this.activeRemoteStop
     const route = this.remoteRoute()
     if (!stop || !route) {
-      this.state.showToast("No hay una parada activa que se pueda confirmar.")
+      this.state.showToast("No hay una parada activa que se pueda confirmar.", "error")
       return
     }
+    this.busy.set(true)
     try {
-      await this.api.deliverStop(stop.id, this.receiver.trim())
+      await this.api.deliverStop(stop.id, this.receiver.trim(), this.observations.trim() || undefined)
+      this.lastReceiver.set(this.receiver.trim())
       const activeRoute = await this.api.getDriverRoute()
       this.remoteRoute.set(activeRoute)
       if (!activeRoute) {
@@ -202,55 +269,52 @@ export class DriverFeatureComponent implements OnDestroy {
         this.screen.set(6)
         return
       }
+      this.screen.set(4)
     } catch (error) {
-      this.state.showToast(
-        error instanceof Error
-          ? error.message
-          : "No se pudo confirmar la entrega.",
-      )
-      return
+      this.state.showError(error, "No se pudo confirmar la entrega.")
+    } finally {
+      this.busy.set(false)
     }
-    this.screen.set(4)
   }
 
   async saveIncident(): Promise<void> {
+    const errors = validarIncidencia({ cause: this.incidentCause, notes: this.incidentNotes })
+    this.errors.set(errors)
+    if (Object.keys(errors).length || this.busy()) return
     const stop = this.activeRemoteStop
-    if (!stop) {
-      this.state.showToast("No hay una parada activa para registrar una incidencia.")
-      return
-    }
     const route = this.remoteRoute()
-    if (!route) {
-      this.state.showToast("No se encontró la ruta activa.")
+    if (!stop || !route) {
+      this.state.showToast("No hay una parada activa para registrar una incidencia.", "error")
       return
     }
+    this.busy.set(true)
     try {
-      const result = await this.api.reportStopIncident(
+      const response = await this.api.reportStopIncident(
         stop.id,
         this.incidentCause,
-        this.incidentNotes,
+        this.incidentNotes.trim(),
       ) as { result: "Reprogramada" | "No entregada" }
       const activeRoute = await this.api.getDriverRoute()
       this.remoteRoute.set(activeRoute)
+      this.incidentNotes = ""
       if (!activeRoute) {
         this.closedSummary.set(await this.api.getDriverRouteSummary(route.id))
         this.screen.set(6)
-        this.incidentNotes = ""
-        this.state.showToast("Incidencia registrada. La ruta se cerró al resolverse la última parada.")
+        this.state.showToast("Incidencia registrada. La ruta se cerró al resolverse la última parada.", "info")
         return
       }
-      this.incidentNotes = ""
       this.screen.set(1)
       this.state.showToast(
-        result.result === "Reprogramada"
+        response.result === "Reprogramada"
           ? `Entrega reprogramada: intento ${stop.attempts + 1} de 2.`
           : "Se agotaron los intentos. El pedido vuelve a Listo.",
+        "info",
+        5000,
       )
     } catch (error) {
-      this.state.showToast(
-        error instanceof Error ? error.message : "No se pudo guardar la incidencia.",
-      )
-      return
+      this.state.showError(error, "No se pudo guardar la incidencia.")
+    } finally {
+      this.busy.set(false)
     }
   }
 
@@ -260,16 +324,20 @@ export class DriverFeatureComponent implements OnDestroy {
       window.open(url, "_blank", "noopener,noreferrer")
       return
     }
-    this.state.showToast("Este destino no tiene coordenadas registradas.")
+    this.state.showToast("Este destino no tiene coordenadas registradas.", "error")
+  }
+
+  backToRoute(): void {
+    this.closedSummary.set(null)
+    this.goTo(0)
+    void this.loadRoute()
   }
 
   async logout(): Promise<void> {
     try {
       await this.state.logout()
     } catch (error) {
-      this.state.showToast(
-        error instanceof Error ? error.message : "No se pudo cerrar la sesión.",
-      )
+      this.state.showError(error, "No se pudo cerrar la sesión.")
     }
   }
 }

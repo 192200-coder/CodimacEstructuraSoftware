@@ -22,26 +22,26 @@ describe("validación de datos del cliente", () => {
     "rechaza teléfono inválido %s",
     (contact) => {
       expect(validarDatosCliente({ ...validClient, contact })).toContain(
-        "El teléfono debe tener 9 dígitos y comenzar con 9.",
+        "Ingresa un celular de 9 dígitos que empiece con 9.",
       )
     },
   )
 
   it.each(["Casa", "a".repeat(151)])("rechaza dirección fuera de límites", (address) => {
     expect(validarDatosCliente({ ...validClient, address })).toContain(
-      "La dirección debe tener entre 5 y 150 caracteres.",
+      "Ingresa la dirección.",
     )
   })
 
   it("requiere coordenadas válidas seleccionadas en el mapa y limita referencia", () => {
     expect(validarDatosCliente({ ...validClient, latitude: null })).toContain(
-      "Selecciona la ubicación del cliente en el mapa.",
+      "Marca la ubicación en el mapa.",
     )
     expect(validarDatosCliente({ ...validClient, longitude: 181 })).toContain(
-      "Selecciona la ubicación del cliente en el mapa.",
+      "Marca la ubicación en el mapa.",
     )
     expect(validarDatosCliente({ ...validClient, reference: "x".repeat(151) })).toContain(
-      "La referencia no puede superar los 150 caracteres.",
+      "Máximo 150 caracteres.",
     )
   })
 })

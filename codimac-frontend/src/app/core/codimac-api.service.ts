@@ -24,6 +24,7 @@ import {
   getIndicators,
   loadDemoData,
   getOrders,
+  getOrderEvents,
   getResources,
   getTracking,
   getMapsConfig,
@@ -40,6 +41,8 @@ import {
   type RemoteClosedRoute,
   type RemoteInventoryMovement,
   type RemoteNotification,
+  type RemoteOrderEvent,
+  type AssignmentNotice,
   type PublicTracking,
 } from "../../lib/codimac-api"
 import type { InventoryMovementRequest } from "../../lib/codimac-api"
@@ -133,6 +136,10 @@ export class CodimacApiService {
     return getOrders()
   }
 
+  getOrderEvents(id: string): Promise<RemoteOrderEvent[]> {
+    return getOrderEvents(id)
+  }
+
   prepareOrder(id: string): Promise<unknown> {
     return prepareOrder(id)
   }
@@ -177,7 +184,7 @@ export class CodimacApiService {
     id: string,
     driverId: string,
     vehicleId: string,
-  ): Promise<unknown> {
+  ): Promise<{ status: string; notification: AssignmentNotice }> {
     return assignRoute(id, driverId, vehicleId)
   }
 
@@ -193,8 +200,8 @@ export class CodimacApiService {
     return startDriverRoute(id)
   }
 
-  deliverStop(id: string, receiver: string): Promise<unknown> {
-    return deliverStop(id, receiver)
+  deliverStop(id: string, receiver: string, observations?: string): Promise<unknown> {
+    return deliverStop(id, receiver, observations)
   }
 
   reportStopIncident(
