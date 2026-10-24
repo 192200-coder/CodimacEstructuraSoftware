@@ -8,6 +8,7 @@ import { PostgresCatalogRepository } from "./adapters/postgres-catalog-repositor
 import { PostgresAuthenticationRepository } from "./adapters/postgres-authentication-repository.js"
 import { PostgresOrderRepository } from "./adapters/postgres-order-repository.js"
 import { PostgresRouteRepository } from "./adapters/postgres-route-repository.js"
+import { WhatsAppSimulado } from "./adapters/whatsapp-simulado.js"
 import { createAuthenticationUseCases } from "./application/authentication.js"
 import { createCatalogUseCases } from "./application/catalog.js"
 import { createOrderUseCases } from "./application/orders.js"
@@ -28,7 +29,7 @@ const catalogUseCases = createCatalogUseCases(
   new PostgresCatalogRepository(passwordHasher),
   passwordHasher,
 )
-const routeUseCases = createRouteUseCases(new PostgresRouteRepository())
+const routeUseCases = createRouteUseCases(new PostgresRouteRepository(), new WhatsAppSimulado())
 const orderUseCases = createOrderUseCases(new PostgresOrderRepository())
 const authenticationUseCases = createAuthenticationUseCases(
   new PostgresAuthenticationRepository(),

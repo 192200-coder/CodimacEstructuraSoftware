@@ -66,6 +66,8 @@ export interface CatalogTransaction {
     actorId: string
   }): Promise<void>
   hasActiveRouteForVehicle(vehicleId: string): Promise<boolean>
+  insertCatalog(resource: CatalogResource, body: CatalogRecord): Promise<CatalogRecord>
+  lockCatalog(resource: CatalogResource, id: string): Promise<CatalogRecord | null>
   updateCatalog(
     resource: CatalogResource,
     id: string,
@@ -87,7 +89,6 @@ export interface CatalogRepository {
   transaction<T>(operation: (tx: CatalogTransaction) => Promise<T>): Promise<T>
   listCatalog(resource: CatalogResource): Promise<unknown[]>
   getParameters(): Promise<unknown | null>
-  createCatalog(resource: CatalogResource, body: CatalogRecord): Promise<CatalogRecord>
   listUsers(): Promise<CatalogUser[]>
   loadDemoData(): Promise<void>
   listIndicators(): Promise<unknown[]>
@@ -103,8 +104,13 @@ export interface PasswordHasher {
 export interface CatalogUseCases {
   listCatalog(resource: CatalogResource): Promise<unknown[]>
   getParameters(): Promise<unknown | null>
-  createCatalog(resource: CatalogResource, body: CatalogRecord): Promise<CatalogRecord>
-  updateCatalog(resource: CatalogResource, id: string, body: CatalogRecord): Promise<CatalogRecord>
+  createCatalog(resource: CatalogResource, body: CatalogRecord, actorId: string): Promise<CatalogRecord>
+  updateCatalog(
+    resource: CatalogResource,
+    id: string,
+    body: CatalogRecord,
+    actorId: string,
+  ): Promise<CatalogRecord>
   updateParameters(input: CatalogParametersInput, actorId: string): Promise<CatalogRecord>
   listUsers(): Promise<CatalogUser[]>
   createUser(input: {
@@ -151,6 +157,17 @@ export type InventoryMovementInput =
       actorId: string
     }
 
+const catalogEntities: Record<CatalogResource, { entity: string; label: string }> = {
+  clients: { entity: "Cliente", label: "cliente" },
+  products: { entity: "Producto", label: "producto" },
+  vehicles: { entity: "Vehículo", label: "vehículo" },
+}
+
+/** Solo los campos enviados: la auditoría guarda el antes y el después de lo que cambió. */
+function pickFields(record: CatalogRecord, fields: string[]): CatalogRecord {
+  return Object.fromEntries(fields.filter((field) => field in record).map((field) => [field, record[field]]))
+}
+
 export function createCatalogUseCases(
   repository: CatalogRepository,
   passwordHasher: PasswordHasher,
@@ -158,9 +175,24 @@ export function createCatalogUseCases(
   return {
     listCatalog: (resource) => repository.listCatalog(resource),
     getParameters: () => repository.getParameters(),
-    createCatalog: (resource, body) => repository.createCatalog(resource, body),
-    async updateCatalog(resource, id, body) {
+    async createCatalog(resource, body, actorId) {
       return repository.transaction(async (tx) => {
+        const created = await tx.insertCatalog(resource, body)
+        await registrarEventoAuditoria(tx.audit, {
+          usuarioId: actorId,
+          accion: `Alta de ${catalogEntities[resource].label}`,
+          entidad: catalogEntities[resource].entity,
+          entidadId: String(created.id ?? ""),
+          valorAnterior: null,
+          valorNuevo: pickFields(created, Object.keys(body)),
+        })
+        return created
+      })
+    },
+    async updateCatalog(resource, id, body, actorId) {
+      return repository.transaction(async (tx) => {
+        const before = await tx.lockCatalog(resource, id)
+        if (!before) throw new ApplicationError("NOT_FOUND", "Registro no encontrado")
         if (
           resource === "vehicles" &&
           body.available === true &&
@@ -173,6 +205,15 @@ export function createCatalogUseCases(
         }
         const updated = await tx.updateCatalog(resource, id, body)
         if (!updated) throw new ApplicationError("NOT_FOUND", "Registro no encontrado")
+        const fields = Object.keys(body)
+        await registrarEventoAuditoria(tx.audit, {
+          usuarioId: actorId,
+          accion: `Edición de ${catalogEntities[resource].label}`,
+          entidad: catalogEntities[resource].entity,
+          entidadId: id,
+          valorAnterior: pickFields(before, fields),
+          valorNuevo: pickFields(updated, fields),
+        })
         return updated
       })
     },
@@ -329,7 +370,7 @@ export function createCatalogUseCases(
             [{
               field: "quantity",
               code: "STOCK_MENOR_A_RESERVADO",
-              message: `Solo puedes disminuir hasta ${Math.max(0, product.totalStock - product.reservedStock)} unidades disponibles.`,
+              message: `No puedes bajar de ${product.reservedStock} unidades: están reservadas.`,
             }],
           )
         }

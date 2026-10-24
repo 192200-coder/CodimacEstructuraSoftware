@@ -45,7 +45,7 @@ function createRouteUseCasesMock(): RouteUseCases {
       { id: "route-2", code: "R-002", status: "Asignada" as const },
     ]),
     remove: vi.fn(async () => undefined),
-    assign: vi.fn(async () => undefined),
+    assign: vi.fn(async () => ({ canal: "WhatsApp" as const, estado: "Simulado" as const, detalle: "Simulado" })),
     start: vi.fn(async () => undefined),
     deliver: vi.fn(async () => undefined),
     reportIncident: vi.fn(async () => "Reprogramada" as const),
@@ -137,7 +137,7 @@ describe("contratos HTTP de los routers refactorizados", () => {
     })
 
     expect(created.status).toBe(201)
-    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("clients", client)
+    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("clients", client, "90000000-0000-4000-8000-000000000001")
 
     const updated = await fetch(
       `${baseUrl}/api/catalog/clients/20000000-0000-4000-8000-000000000001`,
@@ -152,6 +152,7 @@ describe("contratos HTTP de los routers refactorizados", () => {
       "clients",
       "20000000-0000-4000-8000-000000000001",
       { reference: "Junto al mercado" },
+      "90000000-0000-4000-8000-000000000001",
     )
 
     const adminOnlyCatalog = await fetch(`${baseUrl}/api/admin/catalog/products`, {
@@ -235,14 +236,14 @@ describe("contratos HTTP de los routers refactorizados", () => {
     }
 
     expect((await send("POST", "/admin/catalog/products", product)).status).toBe(201)
-    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("products", product)
+    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("products", product, expect.any(String))
     expect((await send("PUT", `/admin/catalog/products/${id}`, { name: "Cemento Sol", active: false })).status).toBe(200)
-    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("products", id, { name: "Cemento Sol", active: false })
+    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("products", id, { name: "Cemento Sol", active: false }, expect.any(String))
 
     expect((await send("POST", "/admin/catalog/vehicles", vehicle)).status).toBe(201)
-    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("vehicles", vehicle)
+    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("vehicles", vehicle, expect.any(String))
     expect((await send("PUT", `/admin/catalog/vehicles/${id}`, { capacity_kg: 6000, available: false })).status).toBe(200)
-    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("vehicles", id, { capacity_kg: 6000, available: false })
+    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("vehicles", id, { capacity_kg: 6000, available: false }, expect.any(String))
 
     expect((await send("POST", "/catalog/clients", client)).status).toBe(201)
     expect((await send("PUT", `/catalog/clients/${id}`, { address: "Otra dirección", latitude: -13.5 })).status).toBe(200)

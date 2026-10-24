@@ -118,7 +118,7 @@ describe("API CODIMAC", () => {
       },
       body: JSON.stringify({
         email: "new@codimac.pe",
-        password: "long-password",
+        password: "ClaveSegura123",
         name: "Nuevo usuario",
         role: "Chofer",
       }),
@@ -150,7 +150,7 @@ describe("API CODIMAC", () => {
         } as never
       }
       if (String(statement).includes("INSERT INTO profiles")) {
-        throw Object.assign(new Error("duplicate key"), { code: "23505" })
+        throw Object.assign(new Error("duplicate key"), { code: "23505", constraint: "profiles_email_key" })
       }
       return { rows: [], rowCount: 0 } as never
     })
@@ -167,7 +167,7 @@ describe("API CODIMAC", () => {
       },
       body: JSON.stringify({
         email: "existing@codimac.pe",
-        password: "long-password",
+        password: "ClaveSegura123",
         name: "Usuario duplicado",
         role: "Chofer",
       }),
@@ -175,7 +175,10 @@ describe("API CODIMAC", () => {
 
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({
-      error: { code: "CONFLICT" },
+      error: {
+        code: "CONFLICT",
+        fields: [{ field: "email", message: "Ese correo ya está registrado." }],
+      },
     })
     query.mockReset()
     query.mockResolvedValue({ rows: [], rowCount: 0 } as never)

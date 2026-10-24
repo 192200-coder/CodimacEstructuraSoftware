@@ -141,9 +141,14 @@ export function createOrderUseCases(repository: OrderRepository): OrderUseCases 
         const stockErrors = validateOrderStock(
           items.map(({ id: productId, quantity }) => ({ productId, quantity })),
           items,
+          "preparacion",
         )
         if (stockErrors.length) {
-          throw new ApplicationError("VALIDATION_ERROR", "Revisa los campos marcados.", stockErrors)
+          throw new ApplicationError(
+            "VALIDATION_ERROR",
+            stockErrors.map((error) => error.message).join(" "),
+            stockErrors,
+          )
         }
         for (const item of items) {
           await tx.reserveOrderItem({

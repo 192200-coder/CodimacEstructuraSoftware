@@ -45,11 +45,13 @@ class PostgresRouteTransaction implements RouteTransaction {
     estimatedMinutes: number
     estimatedLiters: number
     estimatedCost: number
+    referenceKm: number | null
+    referenceMinutes: number | null
     actorId: string
   }): Promise<{ id: string; code: string }> {
     const result = await this.client.query(
-      `INSERT INTO routes(codigo,status,distance_km,estimated_minutes,estimated_liters,estimated_cost,created_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,codigo AS code`,
+      `INSERT INTO routes(codigo,status,distance_km,estimated_minutes,estimated_liters,estimated_cost,created_by,reference_km,reference_minutes)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id,codigo AS code`,
       [
         input.code,
         input.status,
@@ -58,6 +60,8 @@ class PostgresRouteTransaction implements RouteTransaction {
         input.estimatedLiters,
         input.estimatedCost,
         input.actorId,
+        input.referenceKm,
+        input.referenceMinutes,
       ],
     )
     return { id: result.rows[0].id as string, code: result.rows[0].code as string }
@@ -560,6 +564,7 @@ export class PostgresRouteRepository implements RouteRepository {
     const result = await pool.query(
       `SELECT r.id,r.codigo AS code,r.status,r.created_at,r.started_at,r.closed_at,
          r.distance_km,r.estimated_minutes,r.estimated_liters,r.estimated_cost,
+         r.reference_km,r.reference_minutes,
          COALESCE((
            SELECT sum(oi.quantity*product.weight_kg)
            FROM route_stops route_stop

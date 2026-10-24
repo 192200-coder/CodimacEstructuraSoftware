@@ -28,7 +28,7 @@ export const catalogFields: Record<CatalogResource, readonly string[]> = {
   ],
 }
 
-// Todas las tablas de catÃ¡logo tienen updated_at (migraciÃ³n 009).
+// Todas las tablas de catálogo tienen updated_at (migración 009).
 const catalogTablesWithUpdatedAt: ReadonlySet<CatalogResource> = new Set([
   "clients",
   "products",
@@ -208,6 +208,24 @@ class PostgresCatalogTransaction implements CatalogTransaction {
     return Boolean(result.rowCount)
   }
 
+  async insertCatalog(resource: CatalogResource, body: CatalogRecord): Promise<CatalogRecord> {
+    const selectedFields = Object.keys(body).filter((field) =>
+      catalogFields[resource].includes(field),
+    )
+    const values = selectedFields.map((field) => body[field])
+    const placeholders = selectedFields.map((_, index) => `$${index + 1}`)
+    const result = await this.client.query(
+      `INSERT INTO ${resource}(${selectedFields.join(",")}) VALUES(${placeholders.join(",")}) RETURNING *`,
+      values,
+    )
+    return result.rows[0]
+  }
+
+  async lockCatalog(resource: CatalogResource, id: string): Promise<CatalogRecord | null> {
+    const result = await this.client.query(`SELECT * FROM ${resource} WHERE id=$1 FOR UPDATE`, [id])
+    return result.rowCount ? result.rows[0] : null
+  }
+
   async updateCatalog(
     resource: CatalogResource,
     id: string,
@@ -240,22 +258,6 @@ export class PostgresCatalogRepository implements CatalogRepository {
       "SELECT * FROM global_parameters WHERE singleton=true",
     )
     return result.rows[0] ?? null
-  }
-
-  async createCatalog(
-    resource: CatalogResource,
-    body: CatalogRecord,
-  ): Promise<CatalogRecord> {
-    const selectedFields = Object.keys(body).filter((field) =>
-      catalogFields[resource].includes(field),
-    )
-    const values = selectedFields.map((field) => body[field])
-    const placeholders = selectedFields.map((_, index) => `$${index + 1}`)
-    const result = await pool.query(
-      `INSERT INTO ${resource}(${selectedFields.join(",")}) VALUES(${placeholders.join(",")}) RETURNING *`,
-      values,
-    )
-    return result.rows[0]
   }
 
   async listUsers(): Promise<CatalogUser[]> {

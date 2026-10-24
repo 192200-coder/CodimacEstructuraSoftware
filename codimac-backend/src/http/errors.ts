@@ -37,6 +37,13 @@ function fieldName(path: PropertyKey[]): string {
     typeof part === "number" ? `${field}[${part}]` : field ? `${field}.${String(part)}` : String(part), "")
 }
 
+/** Restricciones UNIQUE de 001_codimac.sql traducidas a errores por campo (Anexo B). */
+const uniqueConstraintFields: Record<string, { field: string; message: string }> = {
+  profiles_email_key: { field: "email", message: "Ese correo ya está registrado." },
+  products_name_key: { field: "name", message: "Ya existe un producto con ese nombre." },
+  vehicles_plate_key: { field: "plate", message: "Ya existe un vehículo con esa placa." },
+}
+
 export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _next) => {
   if (error instanceof ApplicationError) {
     const status = error.code === "NOT_FOUND"
@@ -84,11 +91,13 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
   if (error && typeof error === "object" && "code" in error) {
     const code = String(error.code)
     if (code === "23505") {
+      const constraint = "constraint" in error ? String(error.constraint) : ""
+      const field = uniqueConstraintFields[constraint]
       res.status(409).json({
         error: {
           code: "CONFLICT",
-          message: "Ya existe un registro con esos datos.",
-          fields: [],
+          message: field?.message ?? "Ya existe un registro con esos datos.",
+          fields: field ? [{ field: field.field, code: "DUPLICADO", message: field.message }] : [],
         },
       })
       return

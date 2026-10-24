@@ -130,7 +130,7 @@ describe("división de carga en múltiples rutas", () => {
 
     await expect(
       useCases.createBatch({ routes: [plan(1), plan(2)], actorId: "dispatcher-1" }),
-    ).rejects.toThrow("La carga supera la capacidad del vehículo")
+    ).rejects.toThrow("supera la capacidad del vehículo")
     expect(tx.assignRoute).toHaveBeenCalledTimes(1)
   })
 
@@ -262,6 +262,51 @@ describe("casos de uso de reparto", () => {
     }))
   })
 
+  it("envía el aviso de WhatsApp después de asignar y registra el resultado (RF-03.6, RF-03.7)", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteForAssignment).mockResolvedValue({ status: "Aprobada" })
+    vi.mocked(tx.lockAvailableDriver).mockResolvedValue(true)
+    vi.mocked(tx.lockAvailableVehicle).mockResolvedValue({ capacityKg: 500 })
+    const notificador = {
+      notificarAsignacion: vi.fn(async () => ({
+        canal: "WhatsApp" as const,
+        estado: "Simulado" as const,
+        detalle: "Sin envío real",
+      })),
+    }
+    const useCases = createRouteUseCases(createRepository(tx), notificador)
+
+    await expect(useCases.assign("route-1", "driver-1", "vehicle-1", "dispatcher-1"))
+      .resolves.toMatchObject({ estado: "Simulado" })
+    expect(notificador.notificarAsignacion).toHaveBeenCalledWith({
+      routeId: "route-1",
+      driverId: "driver-1",
+      vehicleId: "vehicle-1",
+    })
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Aviso de asignación",
+      valorNuevo: { canal: "WhatsApp", estado: "Simulado", choferId: "driver-1" },
+    }))
+  })
+
+  it("mantiene la asignación cuando el aviso de WhatsApp falla (RNF-04)", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteForAssignment).mockResolvedValue({ status: "Aprobada" })
+    vi.mocked(tx.lockAvailableDriver).mockResolvedValue(true)
+    vi.mocked(tx.lockAvailableVehicle).mockResolvedValue({ capacityKg: 500 })
+    const useCases = createRouteUseCases(createRepository(tx), {
+      notificarAsignacion: vi.fn(async () => { throw new Error("Proveedor caído") }),
+    })
+
+    await expect(useCases.assign("route-1", "driver-1", "vehicle-1", "dispatcher-1"))
+      .resolves.toEqual({ canal: "WhatsApp", estado: "Fallido", detalle: "Proveedor caído" })
+    expect(tx.assignRoute).toHaveBeenCalledWith("route-1", "driver-1", "vehicle-1")
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Aviso de asignación",
+      valorNuevo: expect.objectContaining({ estado: "Fallido" }),
+    }))
+  })
+
   it("bloquea la asignación cuando la carga supera la capacidad del vehículo", async () => {
     const tx = createTransaction()
     vi.mocked(tx.lockRouteForAssignment).mockResolvedValue({ status: "Aprobada" })
@@ -271,7 +316,10 @@ describe("casos de uso de reparto", () => {
     const useCases = createRouteUseCases(createRepository(tx))
 
     await expect(useCases.assign("route-1", "driver-1", "vehicle-1", "dispatcher-1"))
-      .rejects.toMatchObject({ code: "CONFLICT" })
+      .rejects.toMatchObject({
+        code: "CONFLICT",
+        message: "El peso del reparto (500.1 kg) supera la capacidad del vehículo (500 kg).",
+      })
 
     expect(tx.assignRoute).not.toHaveBeenCalled()
     expect(tx.setVehicleAvailable).not.toHaveBeenCalled()

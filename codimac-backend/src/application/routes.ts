@@ -17,6 +17,7 @@ import {
   registrarEventoAuditoria,
   type RegistroAuditoria,
 } from "./registro-auditoria.js"
+import type { NotificadorAsignacion, ResultadoAviso } from "./notificaciones.js"
 
 export interface CreateRouteInput {
   orderIds: string[]
@@ -24,6 +25,9 @@ export interface CreateRouteInput {
   estimatedMinutes: number
   estimatedLiters: number
   estimatedCost: number
+  /** Recorrido de referencia (RN-09): mismas paradas en orden de prioridad. */
+  referenceKm?: number
+  referenceMinutes?: number
   actorId: string
 }
 
@@ -77,6 +81,8 @@ export interface RouteTransaction {
     estimatedMinutes: number
     estimatedLiters: number
     estimatedCost: number
+    referenceKm: number | null
+    referenceMinutes: number | null
     actorId: string
   }): Promise<{ id: string; code: string }>
   insertRouteStops(routeId: string, orderIds: string[]): Promise<void>
@@ -177,9 +183,14 @@ export interface RouteUseCases {
   createBatch(input: CreateRouteBatchInput): Promise<Array<{ id: string; code: string; status: "Asignada" }>>
   approve(routeId: string, actorId: string): Promise<void>
   remove(routeId: string, actorId: string): Promise<void>
-  assign(routeId: string, driverId: string, vehicleId: string, actorId: string): Promise<void>
+  assign(routeId: string, driverId: string, vehicleId: string, actorId: string): Promise<ResultadoAviso>
   start(routeId: string, actorId: string): Promise<void>
-  deliver(stopId: string, receivedBy: string, actorId: string): Promise<void>
+  deliver(
+    stopId: string,
+    receivedBy: string,
+    actorId: string,
+    observations?: string | null,
+  ): Promise<void>
   reportIncident(
     stopId: string,
     cause: string,
@@ -192,7 +203,13 @@ export interface RouteUseCases {
   routeSummary(routeId: string, driverId: string): Promise<unknown | null>
 }
 
-export function createRouteUseCases(repository: RouteRepository): RouteUseCases {
+const formatKg = (value: number) =>
+  new Intl.NumberFormat("es-PE", { maximumFractionDigits: 2 }).format(value)
+
+export function createRouteUseCases(
+  repository: RouteRepository,
+  notificador?: NotificadorAsignacion,
+): RouteUseCases {
   function requireRouteTransition(current: string, next: RouteStatus): RouteStatus {
     if (!canTransitionRouteStatus(current, next)) {
       throw new ApplicationError(
@@ -224,8 +241,12 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
     if (await tx.vehicleHasActiveRoute(vehicleId)) {
       throw new ApplicationError("CONFLICT", "El vehículo ya está asignado")
     }
-    if (await tx.routeWeight(routeId) > vehicle.capacityKg) {
-      throw new ApplicationError("CONFLICT", "La carga supera la capacidad del vehículo")
+    const weight = await tx.routeWeight(routeId)
+    if (weight > vehicle.capacityKg) {
+      throw new ApplicationError(
+        "CONFLICT",
+        `El peso del reparto (${formatKg(weight)} kg) supera la capacidad del vehículo (${formatKg(vehicle.capacityKg)} kg).`,
+      )
     }
 
     await tx.assignRoute(routeId, driverId, vehicleId)
@@ -348,6 +369,8 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
       estimatedMinutes: input.estimatedMinutes,
       estimatedLiters: input.estimatedLiters,
       estimatedCost: input.estimatedCost,
+      referenceKm: input.referenceKm ?? null,
+      referenceMinutes: input.referenceMinutes ?? null,
       actorId: input.actorId,
     })
     await tx.insertRouteStops(route.id, input.orderIds)
@@ -470,6 +493,35 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
       await repository.transaction((tx) =>
         assignInTransaction(tx, routeId, driverId, vehicleId, actorId),
       )
+      // El aviso externo va después del commit: si falla, la asignación sigue vigente (RF-03.6).
+      if (!notificador) {
+        return { canal: "WhatsApp", estado: "No configurado", detalle: "El aviso queda en el panel del chofer." }
+      }
+      let resultado: ResultadoAviso
+      try {
+        resultado = await notificador.notificarAsignacion({ routeId, driverId, vehicleId })
+      } catch (error) {
+        resultado = {
+          canal: "WhatsApp",
+          estado: "Fallido",
+          detalle: error instanceof Error ? error.message : "No se pudo enviar el aviso.",
+        }
+      }
+      try {
+        await repository.transaction((tx) =>
+          registrarEventoAuditoria(tx.audit, {
+            usuarioId: actorId,
+            accion: "Aviso de asignación",
+            entidad: "Ruta",
+            entidadId: routeId,
+            valorAnterior: null,
+            valorNuevo: { canal: resultado.canal, estado: resultado.estado, choferId: driverId },
+          }),
+        )
+      } catch (error) {
+        console.error("No se pudo registrar el resultado del aviso de asignación:", error)
+      }
+      return resultado
     },
     async start(routeId, actorId) {
       await repository.transaction(async (tx) => {
@@ -537,7 +589,7 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
         await recalculateEtas(tx, routeId, null)
       })
     },
-    async deliver(stopId, receivedBy, actorId) {
+    async deliver(stopId, receivedBy, actorId, observations = null) {
       await repository.transaction(async (tx) => {
         const stop = await tx.lockStopForDelivery(stopId)
         if (!stop) throw new ApplicationError("NOT_FOUND", "Parada no encontrada")
@@ -562,7 +614,11 @@ export function createRouteUseCases(repository: RouteRepository): RouteUseCases 
           entidad: "Parada",
           entidadId: stopId,
           valorAnterior: { estado: "En camino" },
-          valorNuevo: { estado: "Entregada", recibidoPor: receivedBy },
+          valorNuevo: {
+            estado: "Entregada",
+            recibidoPor: receivedBy,
+            ...(observations ? { observaciones: observations } : {}),
+          },
         })
         await registrarEventoAuditoria(tx.audit, {
           usuarioId: actorId,
