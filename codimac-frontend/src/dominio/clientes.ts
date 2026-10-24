@@ -1,5 +1,6 @@
 import type { Coordenadas } from "./modelos"
 import { distanciaLineaRectaKm } from "./rutas"
+import { validarCliente } from "./validaciones"
 
 export interface DatosCliente {
   contact: string
@@ -15,30 +16,10 @@ export interface AdvertenciaAreaServicio {
   message: string
 }
 
+/** Lista de mensajes del Anexo B para teléfono, dirección, referencia y ubicación. */
 export function validarDatosCliente(client: DatosCliente): string[] {
-  const errors: string[] = []
-  if (!/^9\d{8}$/.test(client.contact)) {
-    errors.push("El teléfono debe tener 9 dígitos y comenzar con 9.")
-  }
-  if (client.address.trim().length < 5 || client.address.trim().length > 150) {
-    errors.push("La dirección debe tener entre 5 y 150 caracteres.")
-  }
-  if (client.reference.trim().length > 150) {
-    errors.push("La referencia no puede superar los 150 caracteres.")
-  }
-  if (
-    client.latitude === null
-    || client.longitude === null
-    || !Number.isFinite(client.latitude)
-    || !Number.isFinite(client.longitude)
-    || client.latitude < -90
-    || client.latitude > 90
-    || client.longitude < -180
-    || client.longitude > 180
-  ) {
-    errors.push("Selecciona la ubicación del cliente en el mapa.")
-  }
-  return errors
+  const { name: _nombre, ...errores } = validarCliente({ name: "Cliente", ...client })
+  return Object.values(errores)
 }
 
 export function advertenciaAreaServicio(

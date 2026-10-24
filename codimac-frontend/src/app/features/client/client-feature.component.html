@@ -35,7 +35,7 @@
           @if (tracking()?.public_status === "En camino") {
             <div class="arrival-card">
               <span>Tu posición en la ruta<strong>Parada {{ tracking()?.position }} de {{ tracking()?.total_stops }}</strong></span>
-              <span>Llegada estimada<strong>{{ tracking()?.eta_at ? (tracking()?.eta_at | date:"shortTime":"America/Lima") : "Por confirmar" }}</strong></span>
+              <span>Llegada estimada<strong>{{ tracking()?.eta_at ? (tracking()?.eta_at | fecha:"hora") : "Por confirmar" }}</strong></span>
             </div>
           }
         }

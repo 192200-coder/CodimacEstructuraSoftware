@@ -68,6 +68,17 @@ function queryResult(rows: Record<string, unknown>[] = []) {
 const transactionClient = {
   async query(sql: string, values: unknown[] = []) {
     if (sql === "BEGIN" || sql === "COMMIT" || sql === "ROLLBACK") return queryResult()
+    if (sql.includes("INSERT INTO clients(")) {
+      return queryResult([{
+        id: clientId,
+        name: values[0],
+        contact: values[1],
+        address: values[2],
+        reference: values[3],
+        latitude: values[4],
+        longitude: values[5],
+      }])
+    }
     if (sql.includes("nextval('order_code_seq')")) {
       orderSequence += 1
       return queryResult([{ value: orderSequence }])
@@ -673,6 +684,8 @@ describe("flujo HTTP de disponibilidad y reserva de pedidos", () => {
     expect(routes.get(routeId)?.status).toBe("Cerrada")
     expect(inventoryMovements.filter((movement) => movement.type === "SALIDA")).toHaveLength(3)
     expect(auditEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ action: "Alta de cliente", entity: "Cliente" }),
+      expect.objectContaining({ action: "Aviso de asignación", entity: "Ruta" }),
       expect.objectContaining({ action: "Aprobación de reparto", entity: "Ruta" }),
       expect.objectContaining({ action: "Asignación de reparto", entity: "Ruta" }),
       expect.objectContaining({ action: "Cambio de estado", entity: "Ruta" }),
@@ -709,7 +722,7 @@ describe("flujo HTTP de disponibilidad y reserva de pedidos", () => {
         fields: [{
           field: "lineas[0].cantidad",
           code: "STOCK_INSUFICIENTE",
-          message: "Solo hay 85 unidades disponibles; faltan 915.",
+          message: "Solo hay 85 unidades disponibles de Cemento tipo I; faltan 915.",
         }],
       },
     })
@@ -749,7 +762,7 @@ describe("flujo HTTP de disponibilidad y reserva de pedidos", () => {
         code: "VALIDATION_ERROR",
         fields: [{
           code: "STOCK_INSUFICIENTE",
-          message: "Solo hay 25 unidades disponibles; faltan 35.",
+          message: "Stock insuficiente: faltan 35 unidades de Cemento tipo I. El pedido sigue en Pendiente.",
         }],
       },
     })

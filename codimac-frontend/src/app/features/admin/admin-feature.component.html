@@ -1,97 +1,268 @@
-@if (state.active() === "Datos de ejemplo") {
-  <section class="card module-card">
-    <p class="section-kicker">ENTORNO DE DEMOSTRACIÓN</p>
-    <h2>Cargar datos de ejemplo</h2>
-    <p>Agrega clientes, productos, vehículos y pedidos de demostración que aún no existan. La operación es idempotente y no elimina ni reemplaza registros.</p>
-    <button class="button primary" type="button" [disabled]="loadingDemoData()" (click)="loadDemoData()">{{ loadingDemoData() ? "Guardando…" : "Cargar datos faltantes" }}</button>
+@if (loadError()) {<div class="alert error" role="alert"><strong>No se pudo cargar la sección</strong><span>{{ loadError() }}</span></div>}
+@if (section === "Datos de ejemplo") {
+  <section class="settings-grid demo-data-grid">
+    <div class="card">
+      <p class="section-kicker">ENTORNO DE DEMOSTRACIÓN</p>
+      <h2>Cargar datos de ejemplo</h2>
+      <p>Agrega lo que falte: usuarios de cada rol, 4 clientes con ubicación (uno fuera del área de servicio), 3 productos, 2 vehículos, pedidos en cada estado y un reparto cerrado. No elimina ni reemplaza registros.</p>
+      @if (confirmingDemoData()) {
+        <div class="inline-confirm" role="alertdialog" aria-labelledby="demo-confirm-title">
+          <strong id="demo-confirm-title">¿Cargar los datos de ejemplo que falten?</strong>
+          <span>Los registros existentes no se modifican.</span>
+          <div>
+            <button class="button secondary" type="button" [disabled]="loadingDemoData()" (click)="confirmingDemoData.set(false)">Cancelar</button>
+            <button class="button primary" type="button" [disabled]="loadingDemoData()" (click)="loadDemoData()">@if (loadingDemoData()) {<span class="spinner" aria-hidden="true"></span> Cargando…} @else {Sí, cargar datos}</button>
+          </div>
+        </div>
+      } @else {
+        <button class="button primary" type="button" (click)="confirmingDemoData.set(true)"><codimac-icon name="database" [size]="16" /> Cargar datos de ejemplo</button>
+      }
+    </div>
+    <div class="card">
+      <p class="section-kicker">EMPEZAR DE CERO</p>
+      <h2>Restablecer datos de ejemplo</h2>
+      <p>Borra pedidos, repartos, inventario, clientes, productos, vehículos y parámetros, y vuelve a cargar el ejemplo. Los usuarios y la auditoría se conservan; las cuentas de ejemplo vuelven a la contraseña <strong>demostracion</strong>.</p>
+      @if (demoResetEnabled()) {
+        <button class="button danger-outline" type="button" (click)="confirmingReset.set(true)"><codimac-icon name="history" [size]="16" /> Restablecer datos</button>
+      } @else {
+        <p class="alert info" role="note">Deshabilitado en este entorno. Para usarlo en una base de demostración, inicia el backend con <code>DEMO_RESET_ENABLED=true</code> o ejecuta <code>pnpm seed -- --reset</code>.</p>
+      }
+    </div>
   </section>
-} @else if (state.active() === "Indicadores") {
-  <section class="metric-grid admin-metrics">
-    @for (metric of metricRows; track metric[0]; let i = $index) {
-      <article class="metric-card" [class.green]="i === 0" [class.amber]="i === 1" [class.blue]="i > 1">
-        <span class="metric-trend">{{ metric[2] }}</span><strong class="metric-value">{{ metric[1] }}</strong><h2>{{ metric[0] }}</h2>
-      </article>
+  @if (confirmingReset()) {
+    <div class="dialog-backdrop" (click)="!loadingDemoData() && confirmingReset.set(false)">
+      <section class="dialog cancellation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="reset-title" aria-describedby="reset-message" (click)="$event.stopPropagation()">
+        <header class="dialog-header">
+          <div><p class="section-kicker">CONFIRMAR ACCIÓN</p><h2 id="reset-title">Restablecer datos de ejemplo</h2></div>
+          <button class="icon-button" type="button" aria-label="Cerrar confirmación" [disabled]="loadingDemoData()" (click)="confirmingReset.set(false)"><codimac-icon name="close" /></button>
+        </header>
+        <div class="dialog-body">
+          <div class="dialog-confirm danger">
+            <div><codimac-icon name="alertTriangle" [size]="24" /></div>
+            <p id="reset-message">Esto reemplazará los datos actuales. ¿Continuar?</p>
+          </div>
+        </div>
+        <footer class="dialog-footer">
+          <button class="button secondary" type="button" [disabled]="loadingDemoData()" (click)="confirmingReset.set(false)">Cancelar</button>
+          <button class="button danger-primary" type="button" [disabled]="loadingDemoData()" (click)="resetDemoData()">@if (loadingDemoData()) {<span class="spinner" aria-hidden="true"></span> Restableciendo…} @else {Restablecer}</button>
+        </footer>
+      </section>
+    </div>
+  }
+} @else if (section === "Indicadores") {
+  <section class="card module-card indicator-filters">
+    <div class="filterbar">
+      <label>Desde<input type="date" [value]="indicatorsFrom()" (change)="setIndicatorsFrom($event)" /></label>
+      <label>Hasta<input type="date" [value]="indicatorsTo()" (change)="setIndicatorsTo($event)" /></label>
+      @if (indicatorsFrom() || indicatorsTo()) {<button class="button secondary" type="button" (click)="indicatorsFrom.set(''); indicatorsTo.set('')">Quitar filtro</button>}
+      <span class="count-pill">{{ summary.rutas }} {{ summary.rutas === 1 ? "ruta cerrada" : "rutas cerradas" }}</span>
+    </div>
+  </section>
+  <section class="metric-grid admin-metrics" aria-label="Indicadores globales">
+    <article class="metric-card green"><span class="metric-trend">{{ summary.noEntregadas }} no entregadas</span><strong class="metric-value">{{ summary.entregas }}</strong><h2>Entregas completadas</h2></article>
+    <article class="metric-card amber"><span class="metric-trend">Registradas por los choferes</span><strong class="metric-value">{{ summary.incidencias }}</strong><h2>Incidencias</h2></article>
+    <article class="metric-card blue"><span class="metric-trend">Estimado</span><strong class="metric-value">{{ duration(summary.minutos) }}</strong><h2>Tiempo total</h2></article>
+    <article class="metric-card indigo"><span class="metric-trend">Estimado</span><strong class="metric-value">{{ summary.km | numero:1 }} km</strong><h2>Kilómetros</h2></article>
+    <article class="metric-card neutral"><span class="metric-trend">{{ summary.litros | numero:2:2 }} L</span><strong class="metric-value">S/ {{ summary.costo | numero:2:2 }}</strong><h2>Combustible</h2></article>
+  </section>
+  <section class="card module-card reference-comparison" aria-labelledby="reference-title">
+    <div class="card-header"><div><p class="section-kicker">P-A06 · RUTA ELEGIDA VS REFERENCIA</p><h2 id="reference-title">Ahorro estimado frente al recorrido por prioridad</h2></div></div>
+    @if (summary.comparables) {
+      <div class="reference-bars">
+        <div class="comparison-row"><span>Tiempo · ruta elegida</span><div class="bar"><div class="bar-fill chosen" [style.width.%]="barWidth(summary.minutosElegidos, summary.minutosReferencia)"></div></div><strong>{{ duration(summary.minutosElegidos) }}</strong></div>
+        <div class="comparison-row"><span>Tiempo · referencia</span><div class="bar"><div class="bar-fill reference" [style.width.%]="barWidth(summary.minutosReferencia, summary.minutosElegidos)"></div></div><strong>{{ duration(summary.minutosReferencia) }}</strong></div>
+        <div class="comparison-row"><span>Km · ruta elegida</span><div class="bar"><div class="bar-fill chosen" [style.width.%]="barWidth(summary.kmElegidos, summary.kmReferencia)"></div></div><strong>{{ summary.kmElegidos | numero:1 }} km</strong></div>
+        <div class="comparison-row"><span>Km · referencia</span><div class="bar"><div class="bar-fill reference" [style.width.%]="barWidth(summary.kmReferencia, summary.kmElegidos)"></div></div><strong>{{ summary.kmReferencia | numero:1 }} km</strong></div>
+      </div>
+      <p class="savings-line" [class.positive]="summary.ahorroMinutos > 0"><codimac-icon name="clock" [size]="16" /> {{ summary.ahorroMinutos > 0 ? "Ahorro estimado: " + duration(summary.ahorroMinutos) : "Sin ahorro estimado" }} en {{ summary.comparables }} {{ summary.comparables === 1 ? "ruta" : "rutas" }}{{ summary.ahorroKm > 0 ? " y " + (summary.ahorroKm | numero:1) + " km menos" : "" }}.</p>
+    } @else {
+      <p class="dashboard-empty">Las rutas cerradas a partir de esta versión guardan su recorrido de referencia. Aún no hay rutas comparables en el rango elegido.</p>
     }
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Ruta</th><th>Cierre</th><th>Entregas</th><th>Incidencias</th><th>Km</th><th>Minutos</th><th>Referencia</th><th>Ahorro</th></tr></thead>
+        <tbody>
+          @for (row of filteredIndicators; track row.id) {
+            <tr><td><strong>{{ row.code }}</strong></td><td>{{ row.closed_at | fecha }}</td><td>{{ row.delivered }}</td><td>{{ row.incidents }}</td><td>{{ row.distance_km | numero:1 }}</td><td>{{ row.estimated_minutes | numero:0 }}</td><td>{{ row.reference_minutes === null || row.reference_minutes === undefined ? "—" : (row.reference_minutes | numero:0) + " min" }}</td><td>{{ routeSavings(row) === null ? "—" : routeSavings(row) + " min" }}</td></tr>
+          } @empty {<tr><td colspan="8">{{ loaded() ? "No hay rutas cerradas en el rango elegido." : "Conectando…" }}</td></tr>}
+        </tbody>
+      </table>
+    </div>
   </section>
-} @else if (state.active() === "Parámetros") {
-  <section class="settings-grid">
-    <div class="card"><p class="section-kicker">UBICACIÓN</p><h2>Almacén principal</h2><codimac-map-location-picker class="client-map-picker" [showAddressInput]="true" address="Almacén principal" [latitude]="warehouseLatitude" [longitude]="warehouseLongitude" (locationChange)="updateWarehouseLocation($event)" /><label class="setting-field">Latitud<input type="number" step="0.000001" [(ngModel)]="warehouseLatitude" /></label><label class="setting-field">Longitud<input type="number" step="0.000001" [(ngModel)]="warehouseLongitude" /></label></div>
-    <div class="card"><p class="section-kicker">COSTOS Y TIEMPOS</p><h2>Parámetros de ruta</h2>@if (!parametersConfigured) {<p>Aún no hay parámetros guardados en el backend.</p>}<label class="setting-field">Combustible por litro<input type="number" min="0.01" step="0.01" [(ngModel)]="fuelPrice" /></label><label class="setting-field">Minutos por parada<input type="number" min="0" step="1" [(ngModel)]="minutesPerStop" /></label><label class="setting-field">Radio del área de servicio (km)<input type="number" min="0.1" max="1000" step="1" [(ngModel)]="serviceRadiusKm" /></label><button class="button primary" type="button" (click)="saveParameters()">Guardar cambios</button></div>
-  </section>
-} @else if (state.active() === "Auditoría") {
+} @else if (section === "Parámetros") {
+  <form class="settings-grid" novalidate (ngSubmit)="requestSaveParameters()">
+    <div class="card" [class.field-invalid]="parameterError('warehouse')"><p class="section-kicker">UBICACIÓN</p><h2>Almacén principal</h2>
+      <codimac-map-location-picker class="client-map-picker" [showAddressInput]="true" address="Almacén principal" [latitude]="warehouseLatitude" [longitude]="warehouseLongitude" (locationChange)="updateWarehouseLocation($event)" />
+      <div class="client-coordinate-grid">
+        <label>Latitud <codimac-icon name="lock" [size]="13" /><input [value]="warehouseLatitude" readonly tabindex="-1" /></label>
+        <label>Longitud <codimac-icon name="lock" [size]="13" /><input [value]="warehouseLongitude" readonly tabindex="-1" /></label>
+      </div>
+      @if (parameterError("warehouse"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+    </div>
+    <div class="card"><p class="section-kicker">COSTOS Y TIEMPOS</p><h2>Parámetros de ruta</h2>
+      @if (!parametersConfigured) {<p class="alert warning" role="note">Aún no hay parámetros guardados; las rutas no se pueden calcular hasta guardarlos.</p>}
+      <label class="setting-field" [class.field-invalid]="parameterError('fuelPrice')">Precio del combustible (S/ por litro)
+        <input data-error-key="fuelPrice" name="fuelPrice" type="number" inputmode="decimal" min="0.01" step="0.01" [(ngModel)]="fuelPrice" (blur)="validateParameter('fuelPrice')" [attr.aria-invalid]="parameterError('fuelPrice') ? 'true' : null" />
+        @if (parameterError("fuelPrice"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+      </label>
+      <label class="setting-field" [class.field-invalid]="parameterError('minutesPerStop')">Minutos por parada
+        <input data-error-key="minutesPerStop" name="minutesPerStop" type="number" inputmode="numeric" min="0" max="120" step="1" [(ngModel)]="minutesPerStop" (blur)="validateParameter('minutesPerStop')" [attr.aria-invalid]="parameterError('minutesPerStop') ? 'true' : null" />
+        @if (parameterError("minutesPerStop"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+      </label>
+      <label class="setting-field" [class.field-invalid]="parameterError('serviceRadiusKm')">Radio del área de servicio (km)
+        <input data-error-key="serviceRadiusKm" name="serviceRadiusKm" type="number" inputmode="numeric" min="1" max="500" step="1" [(ngModel)]="serviceRadiusKm" (blur)="validateParameter('serviceRadiusKm')" [attr.aria-invalid]="parameterError('serviceRadiusKm') ? 'true' : null" />
+        @if (parameterError("serviceRadiusKm"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+      </label>
+      @if (formError()) {<div class="alert error" role="alert"><strong>No se pudo guardar</strong><span>{{ formError() }}</span></div>}
+      @if (confirmingParameters()) {
+        <div class="inline-confirm" role="alertdialog" aria-labelledby="parameters-confirm-title">
+          <strong id="parameters-confirm-title">¿Guardar los parámetros?</strong>
+          <span>Las próximas rutas usarán estos valores. Las rutas ya calculadas no cambian.</span>
+          <div>
+            <button class="button secondary" type="button" [disabled]="saving()" (click)="confirmingParameters.set(false)">Volver</button>
+            <button class="button primary" type="button" [disabled]="saving()" (click)="saveParameters()">@if (saving()) {<span class="spinner" aria-hidden="true"></span> Guardando…} @else {Sí, guardar}</button>
+          </div>
+        </div>
+      } @else {
+        <button class="button primary" type="submit">Guardar cambios</button>
+      }
+    </div>
+  </form>
+} @else if (section === "Auditoría") {
   <section class="card module-card">
     <form class="filterbar audit-filters" (ngSubmit)="applyAuditFilters()">
       <label>Desde<input name="auditDesde" type="datetime-local" [(ngModel)]="auditDesde" /></label>
       <label>Hasta<input name="auditHasta" type="datetime-local" [(ngModel)]="auditHasta" /></label>
       <label>Usuario<input name="auditUsuario" type="search" placeholder="Nombre o correo" [(ngModel)]="auditUsuario" /></label>
       <label>Entidad<select name="auditEntidad" [(ngModel)]="auditEntidad">
-        <option value="">Todas</option><option>Pedido</option><option>Parada</option><option>Ruta</option>
-        <option>Inventario</option><option>Usuario</option><option>Parámetros</option><option>Autenticación</option>
+        <option value="">Todas</option>
+        @for (entity of ["Pedido", "Parada", "Ruta", "Inventario", "Cliente", "Producto", "Vehículo", "Usuario", "Parámetros", "Autenticación"]; track entity) {<option [value]="entity">{{ entity }}</option>}
       </select></label>
-      <label>Acción exacta<input name="auditAccion" type="search" [(ngModel)]="auditAccion" /></label>
+      <label>Acción<input name="auditAccion" type="search" placeholder="Ej.: Cambio de estado" [(ngModel)]="auditAccion" /></label>
       <button class="button primary" type="submit">Filtrar</button>
+      <button class="button secondary" type="button" (click)="clearAuditFilters()">Limpiar</button>
     </form>
-    <div class="table-wrap"><table><thead><tr>
-      <th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>ID</th><th>Valor anterior</th><th>Valor nuevo</th>
+    <p class="field-hint">Registro inmutable: los eventos no se editan ni se eliminan.</p>
+    <div class="table-wrap"><table class="audit-table"><thead><tr>
+      <th>Fecha y hora</th><th>Usuario</th><th>Acción</th><th>Entidad</th><th>Valor anterior</th><th>Valor nuevo</th>
     </tr></thead><tbody>
       @for (event of auditEvents(); track event.id) {
         <tr>
-          <td>{{ event.fecha_hora | date:"short":"America/Lima" }}</td>
+          <td>{{ event.fecha_hora | fecha }}</td>
           <td>{{ event.usuario ?? event.email ?? "Intento anónimo" }}</td>
-          <td>{{ event.accion }}</td><td>{{ event.entidad }}</td><td>{{ event.entidad_id ?? "—" }}</td>
-          <td><details class="audit-value"><summary>Ver valor</summary><pre>{{ formatAuditValue(event.valor_anterior) }}</pre></details></td>
-          <td><details class="audit-value"><summary>Ver valor</summary><pre>{{ formatAuditValue(event.valor_nuevo) }}</pre></details></td>
+          <td>{{ event.accion }}</td><td>{{ event.entidad }}</td>
+          <td><dl class="audit-values">@for (entry of auditEntries(event.valor_anterior); track entry[0]) {<div><dt>{{ entry[0] }}</dt><dd>{{ entry[1] }}</dd></div>} @empty {<span>—</span>}</dl></td>
+          <td><dl class="audit-values">@for (entry of auditEntries(event.valor_nuevo); track entry[0]) {<div><dt>{{ entry[0] }}</dt><dd>{{ entry[1] }}</dd></div>} @empty {<span>—</span>}</dl></td>
         </tr>
-      } @empty { <tr><td colspan="7">No hay eventos de auditoría para estos filtros.</td></tr> }
+      } @empty { <tr><td colspan="6">{{ loaded() ? "No hay eventos de auditoría para estos filtros." : "Conectando…" }}</td></tr> }
     </tbody></table></div>
-    <div class="filterbar">
+    <div class="filterbar pagination">
       <span>{{ auditTotal() }} eventos · {{ auditTotal() ? auditOffset() + 1 : 0 }}–{{ auditPageEnd }}</span>
       <button class="button secondary" type="button" [disabled]="auditOffset() === 0" (click)="previousAuditPage()">Anterior</button>
       <button class="button secondary" type="button" [disabled]="auditOffset() + auditLimit >= auditTotal()" (click)="nextAuditPage()">Siguiente</button>
     </div>
   </section>
-} @else if (state.active() === "Historial") {
+} @else if (section === "Historial") {
   <codimac-history-page />
-} @else {
+} @else if (isEditableSection) {
   <section class="card module-card">
-    <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar" [placeholder]="'Buscar en ' + state.active().toLowerCase()" /></div><button class="button primary" type="button" (click)="openCreateDialog()">Nuevo {{ state.active().slice(0, -1).toLowerCase() }}</button></div>
-    @if (selectedData) {
-      <div class="table-wrap"><table><thead><tr>@for (header of selectedData.headers; track header) {<th>{{ header }}</th>}<th>Acciones</th></tr></thead><tbody>@for (row of selectedData.rows; track row[0]; let i = $index) {<tr>@for (cell of row; track $index) {<td>@if (cell === "Activo" || cell === "Disponible") {<codimac-status [status]="cell" />} @else { {{ cell }} }</td>}<td>@if (["Usuarios","Productos","Vehículos"].includes(state.active())) {<button class="button secondary" type="button" (click)="startEdit(i)">Editar</button>}</td></tr>} @empty {<tr><td [attr.colspan]="selectedData.headers.length + 1">No hay registros para mostrar.</td></tr>}</tbody></table></div>
-      @if (editingId()) {
-        <form class="form-grid admin-edit-form" (ngSubmit)="saveEdit()">
-          @if (state.active() === "Usuarios") {
-            <label [class.field-invalid]="editNameModel.invalid && editNameModel.touched">Nombre<input #editNameModel="ngModel" name="editName" [(ngModel)]="editName" required minlength="2" />
-              @if (editNameModel.invalid && editNameModel.touched) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />Ingresa el nombre completo.</span>}
-            </label>
-            <label>Celular<input name="editPhone" type="tel" inputmode="numeric" maxlength="9" [(ngModel)]="editPhone" placeholder="9 dígitos o vacío" /></label>
-            <label>Rol<select name="editRole" [(ngModel)]="editRole"><option>Despachador</option><option>Chofer</option><option>Administrador</option></select></label>
-            <label class="user-active-toggle" for="editActive">
-              <span><strong>Usuario activo</strong><small>{{ editActive ? "Puede iniciar sesión" : "Acceso desactivado" }}</small></span>
-              <input id="editActive" name="editActive" type="checkbox" role="switch" [(ngModel)]="editActive" />
-              <span class="toggle-track" aria-hidden="true"><span></span></span>
-            </label>
-            <label [class.field-invalid]="editPasswordModel.invalid && editPasswordModel.touched">Nueva contraseña (opcional)<input #editPasswordModel="ngModel" name="editPassword" type="password" minlength="10" [(ngModel)]="editPassword" />
-              @if (editPasswordModel.invalid && editPasswordModel.touched) {<span class="field-validation-error" role="alert"><codimac-icon name="alertTriangle" [size]="15" />Usa al menos 10 caracteres.</span>}
-            </label>
-          } @else if (state.active() === "Productos") {
-            <label>Nombre<input name="editName" [(ngModel)]="editName" required /></label>
-            <label>Unidad<input name="editUnit" [(ngModel)]="editUnit" required /></label>
-            <label>Peso (kg)<input name="editWeightKg" type="number" min="0" step="0.001" [(ngModel)]="editWeightKg" required /></label>
-            <p>El stock se modifica desde Inventario para conservar su historial de movimientos.</p>
-          } @else {
-            <label>Placa<input name="editPlate" [(ngModel)]="editPlate" required /></label>
-            <label>Tipo<input name="editVehicleType" [(ngModel)]="editVehicleType" required /></label>
-            <label>Capacidad (kg)<input name="editCapacityKg" type="number" min="0.001" [(ngModel)]="editCapacityKg" required /></label>
-            <label>Velocidad (km/h)<input name="editSpeedKmh" type="number" min="0.001" [(ngModel)]="editSpeedKmh" required /></label>
-            <label>Rendimiento (km/L)<input name="editFuelEfficiency" type="number" min="0.001" [(ngModel)]="editFuelEfficiency" required /></label>
-            <label>Disponibilidad<select name="editAvailable" [(ngModel)]="editAvailable"><option [ngValue]="true">Disponible</option><option [ngValue]="false">No disponible</option></select></label>
-          }
-          <footer class="form-actions">
-            <button class="button secondary" type="button" (click)="cancelEdit()">Cancelar</button>
-            <button class="button primary" type="submit">Guardar cambios</button>
-          </footer>
-        </form>
+    <div class="filterbar"><div class="table-search"><codimac-icon name="search" [size]="17" /><input aria-label="Buscar" [placeholder]="'Buscar en ' + section.toLowerCase()" [value]="search()" (input)="setSearch($event)" /></div><button class="button primary" type="button" (click)="openCreateDialog()"><codimac-icon name="plus" [size]="16" /> {{ createLabel }}</button></div>
+    <div class="table-wrap">
+      @if (section === "Usuarios") {
+        <table><thead><tr><th>Nombre</th><th>Correo</th><th>Celular</th><th>Rol</th><th>Estado</th><th><span class="visually-hidden">Acciones</span></th></tr></thead><tbody>
+          @for (user of filteredUsers; track user.id) {
+            <tr [class.highlight-row]="state.highlightedId() === user.id" [class.inactive-row]="!user.active"><td><strong>{{ user.display_name }}</strong>@if (isSelf(user)) {<small class="self-tag">Tú</small>}</td><td>{{ user.email }}</td><td>{{ user.phone ?? "—" }}</td><td>{{ user.role }}</td><td><codimac-status [status]="user.active ? 'Activo' : 'Inactivo'" /></td><td><button class="button secondary compact" type="button" (click)="startEditUser(user)">Editar</button></td></tr>
+          } @empty {<tr><td colspan="6">{{ loaded() ? (search() ? "No hay usuarios que coincidan." : "No hay usuarios registrados.") : "Conectando…" }}</td></tr>}
+        </tbody></table>
+      } @else if (section === "Productos") {
+        <table><thead><tr><th>Producto</th><th>Unidad</th><th>Peso unitario</th><th>Existencias</th><th><span class="visually-hidden">Acciones</span></th></tr></thead><tbody>
+          @for (product of filteredProducts; track product.id) {
+            <tr [class.highlight-row]="state.highlightedId() === product.id"><td><strong>{{ product.name }}</strong></td><td>{{ product.unit }}</td><td>{{ product.weight_kg | numero:3 }} kg</td><td>{{ product.total_stock | numero }}</td><td><button class="button secondary compact" type="button" (click)="startEditProduct(product)">Editar</button></td></tr>
+          } @empty {<tr><td colspan="5">{{ loaded() ? (search() ? "No hay productos que coincidan." : "No hay productos registrados.") : "Conectando…" }}</td></tr>}
+        </tbody></table>
+      } @else {
+        <table><thead><tr><th>Placa</th><th>Tipo</th><th>Capacidad</th><th>Velocidad</th><th>Rendimiento</th><th>Disponibilidad</th><th><span class="visually-hidden">Acciones</span></th></tr></thead><tbody>
+          @for (vehicle of filteredVehicles; track vehicle.id) {
+            <tr [class.highlight-row]="state.highlightedId() === vehicle.id"><td><strong>{{ vehicle.plate }}</strong></td><td>{{ vehicle.vehicle_type }}</td><td>{{ vehicle.capacity_kg | numero }} kg</td><td>{{ vehicle.average_speed_kmh | numero }} km/h</td><td>{{ vehicle.fuel_efficiency_km_l | numero:1 }} km/L</td><td><codimac-status [status]="vehicle.available ? 'Disponible' : 'No disponible'" /></td><td><button class="button secondary compact" type="button" (click)="startEditVehicle(vehicle)">Editar</button></td></tr>
+          } @empty {<tr><td colspan="7">{{ loaded() ? (search() ? "No hay vehículos que coincidan." : "No hay vehículos registrados.") : "Conectando…" }}</td></tr>}
+        </tbody></table>
       }
-    }
+    </div>
   </section>
+}
+@if (editingId() && isEditableSection) {
+  <div class="dialog-backdrop" (click)="cancelEdit()">
+    <section class="dialog admin-edit-dialog" role="dialog" aria-modal="true" aria-labelledby="admin-edit-title" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <div><p class="section-kicker">CODIMAC</p><h2 id="admin-edit-title">Editar {{ section === "Usuarios" ? "usuario" : section === "Productos" ? "producto" : "vehículo" }}</h2></div>
+        <button class="icon-button" type="button" aria-label="Cerrar formulario" [disabled]="saving()" (click)="cancelEdit()"><codimac-icon name="close" /></button>
+      </header>
+      <form novalidate (ngSubmit)="saveEdit()">
+        <div class="dialog-body">
+          @if (formError()) {<div class="alert error form-banner" role="alert"><strong>No se pudo guardar</strong><span>{{ formError() }}</span></div>}
+          <div class="dialog-grid">
+            @if (section === "Usuarios") {
+              <label class="full" [class.field-invalid]="error('name')">Nombre completo
+                <input data-error-key="name" name="editName" maxlength="80" [(ngModel)]="editName" (blur)="validateField('name')" [attr.aria-invalid]="error('name') ? 'true' : null" />
+                @if (error("name"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label [class.field-invalid]="error('role')">Rol
+                <select data-error-key="role" name="editRole" [(ngModel)]="editRole" [disabled]="editingSelf">@for (option of roles; track option) {<option [value]="option">{{ option }}</option>}</select>
+                @if (editingSelf) {<small class="field-hint">No puedes cambiar tu propio rol.</small>}
+              </label>
+              <label [class.field-invalid]="error('phone')">Celular (opcional)
+                <input data-error-key="phone" name="editPhone" type="tel" inputmode="numeric" maxlength="9" [(ngModel)]="editPhone" (blur)="validateField('phone')" placeholder="9 dígitos" [attr.aria-invalid]="error('phone') ? 'true' : null" />
+                @if (error("phone"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label class="user-active-toggle full" for="editActive">
+                <span><strong>Usuario activo</strong><small>{{ editingSelf ? "No puedes desactivar tu propia cuenta." : editActive ? "Puede iniciar sesión" : "Acceso desactivado" }}</small></span>
+                <input id="editActive" name="editActive" type="checkbox" role="switch" [(ngModel)]="editActive" [disabled]="editingSelf" />
+                <span class="toggle-track" aria-hidden="true"><span></span></span>
+              </label>
+              <label class="full" [class.field-invalid]="error('password')">Nueva contraseña (opcional)
+                <input data-error-key="password" name="editPassword" type="password" autocomplete="new-password" [(ngModel)]="editPassword" (blur)="validateField('password')" [attr.aria-invalid]="error('password') ? 'true' : null" />
+                @if (error("password"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>} @else {<small class="field-hint">Déjala vacía para mantener la actual. Mínimo 8 caracteres, con letras y números.</small>}
+              </label>
+            } @else if (section === "Productos") {
+              <label class="full" [class.field-invalid]="error('name')">Nombre del producto
+                <input data-error-key="name" name="editName" maxlength="80" [(ngModel)]="editName" (blur)="validateField('name')" [attr.aria-invalid]="error('name') ? 'true' : null" />
+                @if (error("name"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label [class.field-invalid]="error('unit')">Unidad
+                <select data-error-key="unit" name="editUnit" [(ngModel)]="editUnit">@for (option of editUnitOptions; track option) {<option [value]="option">{{ option }}</option>}</select>
+              </label>
+              <label [class.field-invalid]="error('weightKg')">Peso unitario (kg)
+                <input data-error-key="weightKg" name="editWeightKg" type="number" inputmode="decimal" min="0.001" step="0.001" [(ngModel)]="editWeightKg" (blur)="validateField('weightKg')" [attr.aria-invalid]="error('weightKg') ? 'true' : null" />
+                @if (error("weightKg"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <p class="field-hint full">Las existencias se modifican desde Inventario para conservar el historial de movimientos.</p>
+            } @else {
+              <label [class.field-invalid]="error('plate')">Placa
+                <input data-error-key="plate" name="editPlate" maxlength="7" [(ngModel)]="editPlate" (blur)="validateField('plate')" [attr.aria-invalid]="error('plate') ? 'true' : null" />
+                @if (error("plate"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label>Tipo<select name="editVehicleType" [(ngModel)]="editVehicleType">@for (option of vehicleTypes; track option) {<option [value]="option">{{ option }}</option>}@if (!vehicleTypes.includes($any(editVehicleType))) {<option [value]="editVehicleType">{{ editVehicleType }}</option>}</select></label>
+              <label [class.field-invalid]="error('capacityKg')">Capacidad (kg)
+                <input data-error-key="capacityKg" name="editCapacityKg" type="number" inputmode="decimal" min="1" [(ngModel)]="editCapacityKg" (blur)="validateField('capacityKg')" [attr.aria-invalid]="error('capacityKg') ? 'true' : null" />
+                @if (error("capacityKg"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label [class.field-invalid]="error('averageSpeedKmh')">Velocidad promedio (km/h)
+                <input data-error-key="averageSpeedKmh" name="editSpeedKmh" type="number" inputmode="decimal" min="5" max="120" [(ngModel)]="editSpeedKmh" (blur)="validateField('averageSpeedKmh')" [attr.aria-invalid]="error('averageSpeedKmh') ? 'true' : null" />
+                @if (error("averageSpeedKmh"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label [class.field-invalid]="error('fuelEfficiencyKmL')">Rendimiento (km/L)
+                <input data-error-key="fuelEfficiencyKmL" name="editFuelEfficiency" type="number" inputmode="decimal" min="0.1" max="50" step="0.1" [(ngModel)]="editFuelEfficiency" (blur)="validateField('fuelEfficiencyKmL')" [attr.aria-invalid]="error('fuelEfficiencyKmL') ? 'true' : null" />
+                @if (error("fuelEfficiencyKmL"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+              </label>
+              <label>Disponibilidad<select name="editAvailable" [(ngModel)]="editAvailable"><option [ngValue]="true">Disponible</option><option [ngValue]="false">No disponible</option></select></label>
+            }
+          </div>
+        </div>
+        <footer class="dialog-footer">
+          <button class="button secondary" type="button" [disabled]="saving()" (click)="cancelEdit()">Cancelar</button>
+          <button class="button primary" type="submit" [disabled]="saving()" [attr.aria-busy]="saving()">@if (saving()) {<span class="spinner" aria-hidden="true"></span> Guardando…} @else {Guardar cambios}</button>
+        </footer>
+      </form>
+    </section>
+  </div>
 }

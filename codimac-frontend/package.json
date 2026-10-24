@@ -10,7 +10,8 @@
     "preview": "ng serve --configuration production --host 0.0.0.0 --port 8443",
     "format": "oxfmt",
     "typecheck": "ng build --configuration development",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "oxlint src --deny-warnings"
   },
   "dependencies": {
     "@angular/common": "22.2.3",
@@ -31,6 +32,7 @@
     "@types/leaflet": "^1.9.22",
     "@types/node": "^22.0.0",
     "oxfmt": "^0.2.0",
+    "oxlint": "1.9.0",
     "typescript": "~6.0.3",
     "vitest": "^5.0.5"
   },

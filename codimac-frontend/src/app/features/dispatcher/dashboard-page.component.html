@@ -1,26 +1,35 @@
 @if (loadError()) {
-  <div class="alert error" role="alert">{{ loadError() }}</div>
+  <div class="alert error" role="alert"><strong>No se pudo cargar el panel</strong><span>{{ loadError() }}</span></div>
 } @else if (loading()) {
-  <section class="card"><p>Cargando el resumen de la operación…</p></section>
+  <section class="metric-grid" aria-label="Cargando resumen" aria-busy="true">
+    @for (placeholder of [1, 2, 3, 4, 5, 6]; track placeholder) {<article class="metric-card skeleton-card"><span></span><span></span></article>}
+  </section>
+  <p class="loading-note">Conectando…</p>
 } @else {
-  <section class="metric-grid" aria-label="Resumen de pedidos">
+  <section class="metric-grid six" aria-label="Resumen de pedidos por estado">
     @for (metric of metrics; track metric.label) {
-      <article class="metric-card" [class]="metric.tone">
+      <button class="metric-card" type="button" [class]="'metric-card ' + metric.tone" [attr.aria-label]="metric.value + ' pedidos ' + metric.label" (click)="filterOrders(metric.status)">
         <div class="metric-top">
           <div class="metric-icon"><codimac-icon [name]="metric.icon" [size]="19" /></div>
-          <span class="metric-trend">Actual</span>
+          <span class="metric-trend">Ver</span>
         </div>
         <strong class="metric-value">{{ metric.value }}</strong>
         <h2>{{ metric.label }}</h2>
         <p>{{ metric.detail }}</p>
-      </article>
+      </button>
     }
   </section>
+  @if (deadlineAlerts.length) {
+    <section class="alert warning deadline-alerts" role="status" aria-label="Plazos por vencer">
+      <strong><codimac-icon name="alertTriangle" [size]="16" /> Plazos por vencer</strong>
+      <ul>@for (alert of deadlineAlerts; track alert.code) {<li [class.overdue]="alert.vencido">{{ alert.message }}</li>}</ul>
+    </section>
+  }
   <div class="dashboard-grid">
     <section class="card delivery-card">
       <div class="card-header">
         <div><p class="section-kicker">OPERACIÓN</p><h2>Pedidos recientes</h2></div>
-        <codimac-status [status]="orders().length + (orders().length === 1 ? ' pedido' : ' pedidos')" />
+        <span class="count-pill">{{ orders().length }} {{ orders().length === 1 ? "pedido" : "pedidos" }}</span>
       </div>
       @if (recentOrders.length) {
         <div class="table-wrap dashboard-orders">
@@ -32,7 +41,7 @@
                   <td><strong [class.cancelled-order-code]="order.status === 'Cancelado'">{{ order.code }}</strong></td>
                   <td>{{ order.clients?.name ?? "Cliente" }}</td>
                   <td><codimac-status [status]="order.status" /></td>
-                  <td>{{ formatDate(order.ordered_at) }}</td>
+                  <td>{{ order.ordered_at | fecha:"fecha" }}</td>
                 </tr>
               }
             </tbody>
@@ -48,18 +57,37 @@
     <div class="right-column">
       <section class="card availability-card">
         <div class="card-header">
+          <div><p class="section-kicker">EN CURSO</p><h2>Repartos activos</h2></div>
+        </div>
+        @if (activeRoutes.length) {
+          <div class="availability-list">
+            @for (route of activeRoutes; track route.id) {
+              <div>
+                <span class="resource-icon"><codimac-icon name="truck" /></span>
+                <div><strong>{{ route.code }} · {{ route.driver_name ?? "Sin chofer" }}</strong><small>{{ confirmedStops(route) }}/{{ route.stop_count }} paradas resueltas</small></div>
+                <codimac-status [status]="route.status" />
+              </div>
+            }
+          </div>
+        } @else {
+          <p class="dashboard-empty">No hay repartos asignados ni en curso.</p>
+        }
+        <button class="subtle-button" type="button" (click)="state.selectSection('Repartos')">Ir a repartos</button>
+      </section>
+      <section class="card availability-card">
+        <div class="card-header">
           <div><p class="section-kicker">RECURSOS</p><h2>Disponibilidad actual</h2></div>
         </div>
         <div class="availability-list">
           <div><span class="resource-icon"><codimac-icon name="user" /></span><div><strong>Choferes disponibles</strong><small>Para asignar un reparto</small></div><strong class="available-value">{{ resources().drivers.length }}</strong></div>
-          <div><span class="resource-icon"><codimac-icon name="truck" /></span><div><strong>Vehículos</strong><small>Disponibles</small></div><strong class="available-value">{{ resources().vehicles.length }}</strong></div>
+          <div><span class="resource-icon"><codimac-icon name="truck" /></span><div><strong>Vehículos disponibles</strong><small>Sin reparto activo</small></div><strong class="available-value">{{ resources().vehicles.length }}</strong></div>
         </div>
-        <button class="subtle-button" type="button" (click)="state.action('Mostrando todos los recursos disponibles')">Ver disponibilidad</button>
+        <button class="subtle-button" type="button" (click)="state.openDialog('resources')">Ver disponibilidad</button>
       </section>
       <section class="card quick-card">
         <p class="section-kicker">ACCESOS RÁPIDOS</p>
         <div class="quick-actions">
-          <button type="button" (click)="state.action('Formulario de nuevo pedido listo para completar')"><span><codimac-icon name="plus" /></span><div><strong>Nuevo pedido</strong><small>Registrar una venta</small></div><codimac-icon name="arrow" [size]="17" /></button>
+          <button type="button" (click)="state.openDialog('order')"><span><codimac-icon name="plus" /></span><div><strong>Nuevo pedido</strong><small>Registrar una venta</small></div><codimac-icon name="arrow" [size]="17" /></button>
           <button type="button" (click)="state.selectSection('Repartos')"><span><codimac-icon name="route" /></span><div><strong>Armar reparto</strong><small>Crear una nueva ruta</small></div><codimac-icon name="arrow" [size]="17" /></button>
         </div>
       </section>

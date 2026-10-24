@@ -1,5 +1,5 @@
 import { Component, effect, signal } from "@angular/core"
-import { DatePipe } from "@angular/common"
+import { FechaPipe } from "../../shared/fecha.pipe"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import type { RemoteClosedRoute } from "../../../lib/codimac-api"
@@ -11,7 +11,7 @@ import { matchesCodeSearch } from "../../../dominio/busqueda-codigo"
 @Component({
   selector: "codimac-history-page",
   standalone: true,
-  imports: [DatePipe, IconComponent, NumeroPipe, StatusBadgeComponent],
+  imports: [FechaPipe, IconComponent, NumeroPipe, StatusBadgeComponent],
   templateUrl: "./history-page.component.html",
 })
 export class HistoryPageComponent {

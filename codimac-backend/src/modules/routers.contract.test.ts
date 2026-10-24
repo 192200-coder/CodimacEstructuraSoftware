@@ -45,7 +45,7 @@ function createRouteUseCasesMock(): RouteUseCases {
       { id: "route-2", code: "R-002", status: "Asignada" as const },
     ]),
     remove: vi.fn(async () => undefined),
-    assign: vi.fn(async () => undefined),
+    assign: vi.fn(async () => ({ canal: "WhatsApp" as const, estado: "Simulado" as const, detalle: "Simulado" })),
     start: vi.fn(async () => undefined),
     deliver: vi.fn(async () => undefined),
     reportIncident: vi.fn(async () => "Reprogramada" as const),
@@ -59,6 +59,15 @@ function createRouteUseCasesMock(): RouteUseCases {
     }]),
     driverRoute: vi.fn(async () => null),
     routeSummary: vi.fn(async () => ({})),
+    removeOrder: vi.fn(async () => ({ distanceKm: 8, estimatedMinutes: 30, estimatedLiters: 0.8, estimatedCost: 4.96 })),
+    routeMatrix: vi.fn(async () => ({
+      ids: ["almacen", "order-1"],
+      distanciasKm: [[0, 3], [3, 0]],
+      minutos: null,
+      proveedor: "Estimador local",
+      usaTraficoReal: false,
+      aviso: "Ruta calculada con estimación local, sin tráfico real.",
+    })),
   }
 }
 
@@ -86,11 +95,14 @@ function createCatalogUseCasesMock(): CatalogUseCases {
       active: true,
       created_at: "2026-10-18T00:00:00Z",
     })),
-    loadDemoData: vi.fn(async () => undefined),
+    loadDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
+    resetDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
     registerInventoryMovement: vi.fn(async () => 100),
     listIndicators: vi.fn(async () => []),
     listAudit: vi.fn(async () => ({ events: [], total: 0 })),
     listLegacyEvents: vi.fn(async () => []),
+    listDrivers: vi.fn(async () => []),
+    setDriverAvailability: vi.fn(async () => undefined),
     listInventoryMovements: vi.fn(async () => [{
       id: "movement-1",
       tipo: "ENTRADA",
@@ -137,7 +149,7 @@ describe("contratos HTTP de los routers refactorizados", () => {
     })
 
     expect(created.status).toBe(201)
-    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("clients", client)
+    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("clients", client, "90000000-0000-4000-8000-000000000001")
 
     const updated = await fetch(
       `${baseUrl}/api/catalog/clients/20000000-0000-4000-8000-000000000001`,
@@ -152,6 +164,7 @@ describe("contratos HTTP de los routers refactorizados", () => {
       "clients",
       "20000000-0000-4000-8000-000000000001",
       { reference: "Junto al mercado" },
+      "90000000-0000-4000-8000-000000000001",
     )
 
     const adminOnlyCatalog = await fetch(`${baseUrl}/api/admin/catalog/products`, {
@@ -235,14 +248,14 @@ describe("contratos HTTP de los routers refactorizados", () => {
     }
 
     expect((await send("POST", "/admin/catalog/products", product)).status).toBe(201)
-    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("products", product)
+    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("products", product, expect.any(String))
     expect((await send("PUT", `/admin/catalog/products/${id}`, { name: "Cemento Sol", active: false })).status).toBe(200)
-    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("products", id, { name: "Cemento Sol", active: false })
+    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("products", id, { name: "Cemento Sol", active: false }, expect.any(String))
 
     expect((await send("POST", "/admin/catalog/vehicles", vehicle)).status).toBe(201)
-    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("vehicles", vehicle)
+    expect(catalogUseCases.createCatalog).toHaveBeenCalledWith("vehicles", vehicle, expect.any(String))
     expect((await send("PUT", `/admin/catalog/vehicles/${id}`, { capacity_kg: 6000, available: false })).status).toBe(200)
-    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("vehicles", id, { capacity_kg: 6000, available: false })
+    expect(catalogUseCases.updateCatalog).toHaveBeenCalledWith("vehicles", id, { capacity_kg: 6000, available: false }, expect.any(String))
 
     expect((await send("POST", "/catalog/clients", client)).status).toBe(201)
     expect((await send("PUT", `/catalog/clients/${id}`, { address: "Otra dirección", latitude: -13.5 })).status).toBe(200)
@@ -403,5 +416,59 @@ describe("contratos HTTP de los routers refactorizados", () => {
       detail: "Ajuste por conteo",
     })
     expect(validAdjustment.status).toBe(200)
+  })
+
+  it("informa si el restablecimiento está habilitado y lo rechaza con 403 cuando no lo está (M-05)", async () => {
+    authState.role = "Administrador"
+    const status = await fetch(`${baseUrl}/api/admin/demo-data`)
+    expect(await status.json()).toEqual({ resetEnabled: false })
+
+    const reset = await fetch(`${baseUrl}/api/admin/demo-data/reset`, { method: "POST" })
+    expect(reset.status).toBe(403)
+    expect(catalogUseCases.resetDemoData).not.toHaveBeenCalled()
+
+    const load = await fetch(`${baseUrl}/api/admin/demo-data`, { method: "POST" })
+    expect(load.status).toBe(200)
+    expect(catalogUseCases.loadDemoData).toHaveBeenCalledWith("90000000-0000-4000-8000-000000000001")
+  })
+
+  it("restablece los datos de ejemplo solo si el entorno lo habilita", async () => {
+    authState.role = "Administrador"
+    const useCases = createCatalogUseCasesMock()
+    const app = express()
+    app.use(express.json())
+    app.use("/api", createCatalogRouter(useCases, { demoResetEnabled: true }))
+    app.use(errorHandler)
+    const enabledServer = app.listen(0)
+    await new Promise<void>((resolve) => enabledServer.once("listening", resolve))
+    const address = enabledServer.address()
+    if (!address || typeof address === "string") throw new Error("Sin puerto de prueba")
+    try {
+      const reset = await fetch(`http://127.0.0.1:${address.port}/api/admin/demo-data/reset`, { method: "POST" })
+      expect(reset.status).toBe(200)
+      expect(await reset.json()).toEqual({ reset: true, operationalDataLoaded: true })
+      expect(useCases.resetDemoData).toHaveBeenCalledWith("90000000-0000-4000-8000-000000000001")
+    } finally {
+      await new Promise<void>((resolve) => enabledServer.close(() => resolve()))
+    }
+  })
+
+  it("expone la matriz, quita pedidos de rutas y cambia la disponibilidad de choferes", async () => {
+    const json = { "Content-Type": "application/json" }
+    const order = "30000000-0000-4000-8000-000000000001"
+    const route = "50000000-0000-4000-8000-000000000001"
+
+    const matrix = await fetch(`${baseUrl}/api/routes/matrix`, { method: "POST", headers: json, body: JSON.stringify({ orderIds: [order] }) })
+    expect(matrix.status).toBe(200)
+    expect(await matrix.json()).toMatchObject({ matrix: { usaTraficoReal: false } })
+
+    const removed = await fetch(`${baseUrl}/api/routes/${route}/orders/${order}`, { method: "DELETE" })
+    expect(removed.status).toBe(200)
+
+    const availability = await fetch(`${baseUrl}/api/drivers/${order}/availability`, {
+      method: "PUT", headers: json, body: JSON.stringify({ available: false }),
+    })
+    expect(availability.status).toBe(200)
+    expect(catalogUseCases.setDriverAvailability).toHaveBeenCalledWith(order, false, "90000000-0000-4000-8000-000000000001")
   })
 })

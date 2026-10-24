@@ -7,6 +7,8 @@ import {
 import { roleNavigation } from "./models"
 import type { DialogKind, Role } from "./models"
 
+export type ToastTone = "success" | "error" | "info"
+
 @Injectable({ providedIn: "root" })
 export class AppStateService {
   readonly role = signal<Role>(this.readRole())
@@ -16,17 +18,30 @@ export class AppStateService {
   readonly menuOpen = signal(false)
   readonly isOnline = signal(false)
   readonly toast = signal("")
+  readonly toastTone = signal<ToastTone>("success")
   readonly dialog = signal<DialogKind | null>(null)
   readonly inventoryRefresh = signal(0)
   readonly catalogRefresh = signal(0)
   readonly ordersRefresh = signal(0)
+  /** Texto que la búsqueda global entrega a la lista de pedidos. */
+  readonly globalSearch = signal("")
+  /** Id del registro recién creado o editado; las listas lo resaltan unos segundos (patrón "Lista actualizada"). */
+  readonly highlightedId = signal("")
 
   private toastTimer: number | undefined
+  private highlightTimer: number | undefined
 
   constructor() {
     void this.restoreSession()
-    const { data } = codimacAuth.onAuthStateChange((_event, session) => {
+    const { data } = codimacAuth.onAuthStateChange((event, session) => {
       this.isOnline.set(Boolean(session))
+      if (event === "SESSION_EXPIRED" && this.role() !== "Acceso" && this.role() !== "Cliente") {
+        this.dialog.set(null)
+        this.changeRole("Acceso")
+        this.userName.set("")
+        this.userId.set("")
+        this.showToast("Tu sesión expiró. Inicia sesión nuevamente.", "info", 5000)
+      }
     })
     window.addEventListener("beforeunload", () =>
       data.subscription.unsubscribe(),
@@ -43,7 +58,7 @@ export class AppStateService {
 
   selectSection(section: string): void {
     if (!roleNavigation[this.role()].some((item) => item.label === section)) {
-      this.showToast("No tienes acceso a esta sección.")
+      this.showToast("No tienes acceso a esta sección.", "error")
       return
     }
     this.active.set(section)
@@ -51,25 +66,31 @@ export class AppStateService {
     this.persistPreferences()
   }
 
-  showToast(message: string, duration = 2600): void {
+  /** Aviso de unos 4 segundos sobre el fondo difuminado (sección 7: aviso de éxito). */
+  showToast(message: string, tone: ToastTone = "success", duration = 4000): void {
     this.toast.set(message)
+    this.toastTone.set(tone)
     if (this.toastTimer !== undefined) window.clearTimeout(this.toastTimer)
     this.toastTimer = window.setTimeout(() => this.toast.set(""), duration)
   }
 
-  action(message: string): void {
-    const normalized = message.toLowerCase()
-    const dialog = this.dialogFor(normalized)
-    if (dialog) {
-      this.dialog.set(dialog)
-      return
-    }
-    if (normalized.includes("selecciona pedidos para calcular una ruta")) {
-      this.selectSection("Repartos")
-      this.showToast("Selecciona los pedidos Listo para calcular la ruta.")
-      return
-    }
-    this.showToast(message)
+  showError(error: unknown, fallback: string): void {
+    this.showToast(error instanceof Error ? error.message : fallback, "error", 6000)
+  }
+
+  openDialog(kind: DialogKind): void {
+    this.dialog.set(kind)
+  }
+
+  highlight(id: string): void {
+    this.highlightedId.set(id)
+    if (this.highlightTimer !== undefined) window.clearTimeout(this.highlightTimer)
+    this.highlightTimer = window.setTimeout(() => this.highlightedId.set(""), 4000)
+  }
+
+  searchOrders(query: string): void {
+    this.globalSearch.set(query.trim())
+    this.selectSection("Pedidos")
   }
 
   async authenticate(email: string, password: string): Promise<Role> {
@@ -91,7 +112,7 @@ export class AppStateService {
     this.changeRole("Acceso")
     this.userName.set("")
     this.userId.set("")
-    this.showToast("Sesión cerrada correctamente.")
+    this.showToast("Sesión cerrada correctamente.", "info")
     if (error) throw error
   }
 
@@ -117,8 +138,12 @@ export class AppStateService {
   private persistPreferences(): void {
     const role = this.role()
     const active = this.active()
-    localStorage.setItem("codimac-role", role)
-    localStorage.setItem("codimac-section", active)
+    try {
+      localStorage.setItem("codimac-role", role)
+      localStorage.setItem("codimac-section", active)
+    } catch {
+      return
+    }
     if (!localStorage.getItem("codimac-access-token") || !this.isServerRole(role)) return
     const storedUser = localStorage.getItem("codimac-auth-user")
     try {
@@ -144,20 +169,5 @@ export class AppStateService {
 
   private isServerRole(value: Role): value is Exclude<Role, "Cliente" | "Acceso"> {
     return value === "Despachador" || value === "Chofer" || value === "Administrador"
-  }
-
-  private dialogFor(message: string): DialogKind | null {
-    if (message.includes("nuevo pedido")) return "order"
-    if (message.includes("entrada de inventario")) return "inventory-entry"
-    if (message.includes("ajuste de existencias")) return "inventory-adjust"
-    if (message.includes("cliente nuevo")) return "client"
-    if (message.includes("formulario de usuarios")) return "user"
-    if (message.includes("formulario de productos")) return "product"
-    if (message.includes("formulario de vehículos")) return "vehicle"
-    if (message.includes("disponibilidad") || message.includes("todos los recursos")) {
-      return "resources"
-    }
-    if (message.includes("alertas operativas")) return "notifications"
-    return null
   }
 }

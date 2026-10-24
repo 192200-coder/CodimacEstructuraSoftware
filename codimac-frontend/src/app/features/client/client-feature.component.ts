@@ -1,14 +1,15 @@
 import { Component, signal } from "@angular/core"
-import { DatePipe } from "@angular/common"
+import { FechaPipe } from "../../shared/fecha.pipe"
 import { FormsModule } from "@angular/forms"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
 import { IconComponent } from "../../shared/icon.component"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
 import type { PublicTracking } from "../../../lib/codimac-api"
+import { validarConsultaPortal } from "../../../dominio/validaciones"
 
 const trackingSteps = [
-  { number: 1, label: "Registrado", icon: "checkCircle" },
+  { number: 1, label: "Registrado", icon: "clock" },
   { number: 2, label: "En preparación", icon: "box" },
   { number: 3, label: "Listo para salir", icon: "checkCircle" },
   { number: 4, label: "En camino", icon: "truck" },
@@ -18,7 +19,7 @@ const trackingSteps = [
 @Component({
   selector: "codimac-client",
   standalone: true,
-  imports: [FormsModule, IconComponent, StatusBadgeComponent, DatePipe],
+  imports: [FormsModule, IconComponent, StatusBadgeComponent, FechaPipe],
   templateUrl: "./client-feature.component.html",
 })
 export class ClientFeatureComponent {
@@ -65,21 +66,22 @@ export class ClientFeatureComponent {
     return this.tracking()?.public_status === "Cancelado"
   }
 
+  // Una entrega reprogramada sigue en el paso 4 (En camino), con el aviso de reprogramación.
   isStepDone(step: number): boolean {
     const tracking = this.tracking()
     return tracking?.public_status === "Entregado"
-      || (this.reprogrammed() && step < 3)
+      || (this.reprogrammed() && step < 4)
       || (tracking?.current_step !== null && tracking?.current_step !== undefined && step < tracking.current_step)
   }
 
   isStepActive(step: number): boolean {
     return (this.tracking()?.current_step === step && this.tracking()?.public_status !== "Entregado")
-      || (this.reprogrammed() && step === 3)
+      || (this.reprogrammed() && step === 4)
   }
 
   stepDescription(step: number): string {
     const tracking = this.tracking()
-    if (this.reprogrammed() && step === 3) return "Reprogramado"
+    if (this.reprogrammed() && step === 4) return "Reprogramado"
     if (tracking?.public_status === "Entregado") return "Completado"
     if (tracking?.current_step === step) return "Ahora"
     return tracking?.current_step && tracking.current_step > step ? "Completado" : "Próximamente"
@@ -101,10 +103,12 @@ export class ClientFeatureComponent {
   }
 
   async consult(): Promise<void> {
+    if (this.loading()) return
     const code = this.code().trim()
     const lastFourDigits = this.lastFourDigits()
-    if (!code || !/^\d{4}$/.test(lastFourDigits)) {
-      this.error.set("Ingresa el código del pedido y los últimos cuatro dígitos del teléfono del cliente.")
+    const errors = validarConsultaPortal({ codigo: code, ultimos4: lastFourDigits })
+    if (Object.keys(errors).length) {
+      this.error.set(Object.values(errors).join(" "))
       return
     }
     this.loading.set(true)
@@ -119,7 +123,7 @@ export class ClientFeatureComponent {
     } catch (error) {
       this.error.set(error instanceof Error
         ? error.message
-        : "No encontramos un pedido asociado a ese código privado.")
+        : "No encontramos un pedido con esos datos.")
     } finally {
       this.loading.set(false)
     }

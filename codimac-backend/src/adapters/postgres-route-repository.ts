@@ -1,5 +1,5 @@
 import { inTransaction, pool } from "../db/pool.js"
-import type { Coordinates, OpenStop } from "../domain/routing.js"
+import type { Coordinates, OpenStop, RouteEstimate } from "../domain/routing.js"
 import type { RouteStatus } from "../domain/rules.js"
 import type {
   DeliveryStockLine,
@@ -45,11 +45,14 @@ class PostgresRouteTransaction implements RouteTransaction {
     estimatedMinutes: number
     estimatedLiters: number
     estimatedCost: number
+    referenceKm: number | null
+    referenceMinutes: number | null
+    usesRealTraffic: boolean
     actorId: string
   }): Promise<{ id: string; code: string }> {
     const result = await this.client.query(
-      `INSERT INTO routes(codigo,status,distance_km,estimated_minutes,estimated_liters,estimated_cost,created_by)
-       VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id,codigo AS code`,
+      `INSERT INTO routes(codigo,status,distance_km,estimated_minutes,estimated_liters,estimated_cost,created_by,reference_km,reference_minutes,uses_real_traffic)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id,codigo AS code`,
       [
         input.code,
         input.status,
@@ -58,6 +61,9 @@ class PostgresRouteTransaction implements RouteTransaction {
         input.estimatedLiters,
         input.estimatedCost,
         input.actorId,
+        input.referenceKm,
+        input.referenceMinutes,
+        input.usesRealTraffic,
       ],
     )
     return { id: result.rows[0].id as string, code: result.rows[0].code as string }
@@ -126,6 +132,76 @@ class PostgresRouteTransaction implements RouteTransaction {
     }
   }
 
+  async lockRouteEstimate(routeId: string) {
+    const result = await this.client.query(
+      `SELECT codigo AS code,status,distance_km,estimated_minutes,estimated_liters,estimated_cost
+       FROM routes WHERE id=$1 FOR UPDATE`,
+      [routeId],
+    )
+    if (!result.rowCount) return null
+    const row = result.rows[0]
+    return {
+      code: row.code as string,
+      status: row.status as string,
+      distanceKm: Number(row.distance_km ?? 0),
+      estimatedMinutes: Number(row.estimated_minutes ?? 0),
+      estimatedLiters: Number(row.estimated_liters ?? 0),
+      estimatedCost: Number(row.estimated_cost ?? 0),
+    }
+  }
+
+  async routeStopsForEstimate(routeId: string) {
+    const result = await this.client.query(
+      `SELECT s.id,s.order_id,c.latitude,c.longitude FROM route_stops s
+       JOIN orders o ON o.id=s.order_id JOIN clients c ON c.id=o.client_id
+       WHERE s.route_id=$1 ORDER BY s.sequence_number FOR UPDATE OF s`,
+      [routeId],
+    )
+    return result.rows.map((row) => ({
+      id: row.id as string,
+      orderId: row.order_id as string,
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+    }))
+  }
+
+  async planningParameters() {
+    const result = await this.client.query(
+      "SELECT warehouse_latitude,warehouse_longitude,minutes_per_stop FROM global_parameters WHERE singleton=true",
+    )
+    if (!result.rowCount) return null
+    return {
+      warehouse: {
+        latitude: Number(result.rows[0].warehouse_latitude),
+        longitude: Number(result.rows[0].warehouse_longitude),
+      },
+      minutesPerStop: Number(result.rows[0].minutes_per_stop),
+    }
+  }
+
+  async deleteRouteStop(stopId: string): Promise<void> {
+    await this.client.query("DELETE FROM route_stops WHERE id=$1", [stopId])
+  }
+
+  async renumberStops(routeId: string, stopIds: string[]): Promise<void> {
+    // Dos pasos para no chocar con UNIQUE (route_id, sequence_number).
+    await this.client.query(
+      "UPDATE route_stops SET sequence_number=sequence_number+10000 WHERE route_id=$1",
+      [routeId],
+    )
+    for (const [index, stopId] of stopIds.entries()) {
+      await this.client.query("UPDATE route_stops SET sequence_number=$2 WHERE id=$1", [stopId, index + 1])
+    }
+  }
+
+  async updateRouteEstimate(routeId: string, estimate: RouteEstimate): Promise<void> {
+    await this.client.query(
+      `UPDATE routes SET distance_km=$2,estimated_minutes=$3,estimated_liters=$4,estimated_cost=$5,
+         reference_km=NULL,reference_minutes=NULL,uses_real_traffic=false,updated_at=now() WHERE id=$1`,
+      [routeId, estimate.distanceKm, estimate.estimatedMinutes, estimate.estimatedLiters, estimate.estimatedCost],
+    )
+  }
+
   async lockRouteForApproval(routeId: string): Promise<{ status: string } | null> {
     const result = await this.client.query(
       "SELECT status FROM routes WHERE id=$1 FOR UPDATE",
@@ -164,7 +240,7 @@ class PostgresRouteTransaction implements RouteTransaction {
 
   async lockAvailableDriver(driverId: string): Promise<boolean> {
     const result = await this.client.query(
-      "SELECT id FROM profiles WHERE id=$1 AND role='Chofer' AND active=true FOR UPDATE",
+      "SELECT id FROM profiles WHERE id=$1 AND role='Chofer' AND active=true AND available=true FOR UPDATE",
       [driverId],
     )
     return Boolean(result.rowCount)
@@ -532,6 +608,32 @@ export class PostgresRouteRepository implements RouteRepository {
     return inTransaction((client) => operation(new PostgresRouteTransaction(client)))
   }
 
+  async matrixPoints(orderIds: string[]): Promise<{
+    warehouse: Coordinates
+    orders: Array<Coordinates & { id: string }>
+  } | null> {
+    const parameters = await pool.query(
+      "SELECT warehouse_latitude,warehouse_longitude FROM global_parameters WHERE singleton=true",
+    )
+    if (!parameters.rowCount) return null
+    const orders = await pool.query(
+      `SELECT o.id,c.latitude,c.longitude FROM orders o JOIN clients c ON c.id=o.client_id
+       WHERE o.id=ANY($1::uuid[])`,
+      [orderIds],
+    )
+    const byId = new Map(orders.rows.map((row) => [row.id as string, row]))
+    return {
+      warehouse: {
+        latitude: Number(parameters.rows[0].warehouse_latitude),
+        longitude: Number(parameters.rows[0].warehouse_longitude),
+      },
+      orders: orderIds.flatMap((id) => {
+        const row = byId.get(id)
+        return row ? [{ id, latitude: Number(row.latitude), longitude: Number(row.longitude) }] : []
+      }),
+    }
+  }
+
   async listRoutes(): Promise<unknown[]> {
     const result = await pool.query(
       `SELECT r.*,r.codigo AS code,p.display_name AS driver_name, v.plate AS vehicle_plate,
@@ -560,6 +662,7 @@ export class PostgresRouteRepository implements RouteRepository {
     const result = await pool.query(
       `SELECT r.id,r.codigo AS code,r.status,r.created_at,r.started_at,r.closed_at,
          r.distance_km,r.estimated_minutes,r.estimated_liters,r.estimated_cost,
+         r.reference_km,r.reference_minutes,
          COALESCE((
            SELECT sum(oi.quantity*product.weight_kg)
            FROM route_stops route_stop

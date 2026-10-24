@@ -8,6 +8,11 @@ import { PostgresCatalogRepository } from "./adapters/postgres-catalog-repositor
 import { PostgresAuthenticationRepository } from "./adapters/postgres-authentication-repository.js"
 import { PostgresOrderRepository } from "./adapters/postgres-order-repository.js"
 import { PostgresRouteRepository } from "./adapters/postgres-route-repository.js"
+import { WhatsAppSimulado } from "./adapters/whatsapp-simulado.js"
+import { GoogleRoutesMatrix } from "./adapters/google-routes-matrix.js"
+import { createRouteMatrixUseCase } from "./application/route-matrix.js"
+import { logger } from "./http/logger.js"
+import { requestLog, requireHttps } from "./http/middleware.js"
 import { createAuthenticationUseCases } from "./application/authentication.js"
 import { createCatalogUseCases } from "./application/catalog.js"
 import { createOrderUseCases } from "./application/orders.js"
@@ -28,7 +33,14 @@ const catalogUseCases = createCatalogUseCases(
   new PostgresCatalogRepository(passwordHasher),
   passwordHasher,
 )
-const routeUseCases = createRouteUseCases(new PostgresRouteRepository())
+const routeUseCases = createRouteUseCases(
+  new PostgresRouteRepository(),
+  new WhatsAppSimulado(),
+  createRouteMatrixUseCase({
+    proveedor: config.GOOGLE_ROUTES_API_KEY ? new GoogleRoutesMatrix(config.GOOGLE_ROUTES_API_KEY) : null,
+    logger,
+  }),
+)
 const orderUseCases = createOrderUseCases(new PostgresOrderRepository())
 const authenticationUseCases = createAuthenticationUseCases(
   new PostgresAuthenticationRepository(),
@@ -40,10 +52,22 @@ const authenticationUseCases = createAuthenticationUseCases(
 
 export const app = express()
 app.disable("x-powered-by")
+app.set("trust proxy", 1)
 app.use(helmet())
+app.use(requireHttps(config.forceHttps))
+app.use(requestLog)
+// En desarrollo el frontend puede abrirse como localhost, 127.0.0.1 o la IP de red que
+// muestra `ng serve`; en producción solo se aceptan los orígenes de CORS_ORIGIN.
+const localDevelopmentOrigin =
+  /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/
+
+export function isAllowedOrigin(origin: string | undefined, production = config.NODE_ENV === "production") {
+  return !origin || config.corsOrigins.includes(origin) || (!production && localDevelopmentOrigin.test(origin))
+}
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || config.corsOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true)
       return
     }
@@ -87,7 +111,9 @@ app.use("/api/auth", rateLimit({
 }), createAuthRouter(authenticationUseCases))
 app.use("/api", sharedRouter)
 app.use("/api/orders", createOrdersRouter(orderUseCases))
-app.use("/api", createCatalogRouter(catalogUseCases))
+app.use("/api", createCatalogRouter(catalogUseCases, {
+  demoResetEnabled: config.DEMO_RESET_ENABLED === "true",
+}))
 app.use("/api", createRoutesRouter(routeUseCases))
 
 app.use((_req, _res, next) => next(new HttpError(404, "Recurso no encontrado")))

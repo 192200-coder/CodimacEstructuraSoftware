@@ -8,38 +8,32 @@ import type {
 } from "../application/catalog.js"
 import { authenticate, requireRole } from "../http/auth.js"
 import { HttpError } from "../http/errors.js"
-import { clientSchema, idParamSchema, movementSchema, uuidSchema } from "../http/schemas.js"
+import {
+  clientSchema,
+  createUserSchema,
+  idParamSchema,
+  movementSchema,
+  parametersSchema,
+  productSchema,
+  updateUserSchema,
+  uuidSchema,
+  vehicleSchema,
+} from "../http/schemas.js"
 
 const catalogs = {
-  clients: {
-    schema: clientSchema,
-  },
-  products: {
-    schema: z.object({
-      name: z.string().trim().min(1).max(160),
-      unit: z.string().trim().min(1).max(100),
-      weight_kg: z.coerce.number().nonnegative(),
-      total_stock: z.coerce.number().nonnegative().optional(),
-      active: z.boolean().optional(),
-    }),
-  },
-  vehicles: {
-    schema: z.object({
-      plate: z.string().trim().min(1).max(30),
-      vehicle_type: z.string().trim().min(1).max(100),
-      capacity_kg: z.coerce.number().positive(),
-      average_speed_kmh: z.coerce.number().positive(),
-      fuel_efficiency_km_l: z.coerce.number().positive(),
-      available: z.boolean().optional(),
-    }),
-  },
+  clients: { schema: clientSchema },
+  products: { schema: productSchema },
+  vehicles: { schema: vehicleSchema },
 } as const
 
 function isCatalogResource(resource: unknown): resource is CatalogResource {
   return resource === "clients" || resource === "products" || resource === "vehicles"
 }
 
-export function createCatalogRouter(useCases: CatalogUseCases) {
+export function createCatalogRouter(
+  useCases: CatalogUseCases,
+  options: { demoResetEnabled: boolean } = { demoResetEnabled: false },
+) {
   const router = Router()
   router.use(authenticate)
 
@@ -54,7 +48,7 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
 
   router.post("/catalog/clients", requireRole("Despachador", "Administrador"), async (req, res) => {
     const body = clientSchema.parse(req.body)
-    const data = await useCases.createCatalog("clients", body as CatalogRecord)
+    const data = await useCases.createCatalog("clients", body as CatalogRecord, req.user!.id)
     res.status(201).json({ data })
   })
 
@@ -62,7 +56,7 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
     const { id } = idParamSchema.parse(req.params)
     const body = clientSchema.partial().parse(req.body)
     if (!Object.keys(body).length) throw new HttpError(400, "No se indicaron campos para actualizar")
-    const data = await useCases.updateCatalog("clients", id, body as CatalogRecord)
+    const data = await useCases.updateCatalog("clients", id, body as CatalogRecord, req.user!.id)
     res.json({ data })
   })
 
@@ -73,6 +67,7 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
     const data = await useCases.createCatalog(
       req.params.resource,
       body as CatalogRecord,
+      req.user!.id,
     )
     res.status(201).json({ data })
   })
@@ -87,51 +82,58 @@ export function createCatalogRouter(useCases: CatalogUseCases) {
       req.params.resource,
       id,
       body as CatalogRecord,
+      req.user!.id,
     )
     res.json({ data })
   })
 
   router.put("/admin/parameters", requireRole("Administrador"), async (req, res) => {
-    const body = z.object({
-      warehouseLatitude: z.number().min(-90).max(90),
-      warehouseLongitude: z.number().min(-180).max(180),
-      fuelPrice: z.number().positive(),
-      minutesPerStop: z.number().int().nonnegative(),
-      serviceRadiusKm: z.number().positive().max(1000),
-    }).parse(req.body)
+    const body = parametersSchema.parse(req.body)
     res.json({ data: await useCases.updateParameters(body, req.user!.id) })
+  })
+
+  // RF-03.1: disponibilidad de choferes (Despachador y Administrador, matriz de permisos).
+  router.get("/drivers", requireRole("Despachador", "Administrador"), async (_req, res) => {
+    res.json({ drivers: await useCases.listDrivers() })
+  })
+
+  router.put("/drivers/:id/availability", requireRole("Despachador", "Administrador"), async (req, res) => {
+    const { id } = idParamSchema.parse(req.params)
+    const { available } = z.object({ available: z.boolean({ error: "Indica si el chofer está disponible." }) }).parse(req.body)
+    await useCases.setDriverAvailability(id, available, req.user!.id)
+    res.json({ available })
   })
 
   router.get("/admin/users", requireRole("Administrador"), async (_req, res) => {
     res.json({ users: await useCases.listUsers() })
   })
 
-  router.post("/admin/demo-data", requireRole("Administrador"), async (_req, res) => {
-    await useCases.loadDemoData()
-    res.json({ loaded: true })
+  router.get("/admin/demo-data", requireRole("Administrador"), (_req, res) => {
+    res.json({ resetEnabled: options.demoResetEnabled })
+  })
+
+  router.post("/admin/demo-data", requireRole("Administrador"), async (req, res) => {
+    const summary = await useCases.loadDemoData(req.user!.id)
+    res.json({ loaded: true, ...summary })
+  })
+
+  router.post("/admin/demo-data/reset", requireRole("Administrador"), async (req, res) => {
+    if (!options.demoResetEnabled) {
+      throw new HttpError(403, "El restablecimiento está deshabilitado. Actívalo con DEMO_RESET_ENABLED=true solo en una base de demostración.")
+    }
+    const summary = await useCases.resetDemoData(req.user!.id)
+    res.json({ reset: true, ...summary })
   })
 
   router.post("/admin/users", requireRole("Administrador"), async (req, res) => {
-    const body = z.object({
-      email: z.email().transform((email) => email.toLowerCase()),
-      password: z.string().min(10).max(128),
-      name: z.string().trim().min(1).max(160),
-      phone: z.string().regex(/^9\d{8}$/, "El celular debe tener 9 dígitos y comenzar con 9.").nullable().optional(),
-      role: z.enum(["Despachador", "Chofer", "Administrador"]),
-    }).parse(req.body)
+    const body = createUserSchema.parse(req.body)
     const user = await useCases.createUser({ ...body, actorId: req.user!.id })
     res.status(201).json({ user })
   })
 
   router.put("/admin/users/:id", requireRole("Administrador"), async (req, res) => {
     const { id } = idParamSchema.parse(req.params)
-    const body = z.object({
-      name: z.string().trim().min(1).max(160).optional(),
-      phone: z.string().regex(/^9\d{8}$/, "El celular debe tener 9 dígitos y comenzar con 9.").nullable().optional(),
-      role: z.enum(["Despachador", "Chofer", "Administrador"]).optional(),
-      active: z.boolean().optional(),
-      password: z.string().min(10).max(128).optional(),
-    }).refine((value) => Object.keys(value).length > 0, "Indica qué datos deseas actualizar").parse(req.body)
+    const body = updateUserSchema.parse(req.body)
     const user = await useCases.updateUser({
       userId: id,
       actorId: req.user!.id,

@@ -1,5 +1,5 @@
 /// <reference types="google.maps" />
-import type { CambioUbicacionMapa, CoordenadasMapa, PuertoUbicacionMapa } from "../aplicacion/ubicacion-mapa"
+import type { CambioUbicacionMapa, CoordenadasMapa, PuertoUbicacionMapa } from "../../aplicacion/ubicacion-mapa"
 
 let googleMapsLoader: Promise<void> | null = null
 

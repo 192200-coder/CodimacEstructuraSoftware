@@ -24,7 +24,7 @@
                 "input": "public"
               }
             ],
-            "styles": ["src/index.css"],
+            "styles": ["node_modules/leaflet/dist/leaflet.css", "src/index.css"],
             "outputPath": "dist/codimac"
           },
           "configurations": {

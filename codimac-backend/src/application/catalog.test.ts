@@ -28,7 +28,12 @@ function createTransaction(): CatalogTransaction {
     updateProductStock: vi.fn(async () => undefined),
     insertInventoryMovement: vi.fn(async () => undefined),
     hasActiveRouteForVehicle: vi.fn(async () => false),
-    updateCatalog: vi.fn(async () => ({})),
+    lockDriver: vi.fn(async () => ({ name: "Carlos Quispe", available: true })),
+    driverActiveRouteCode: vi.fn(async () => null),
+    setDriverAvailable: vi.fn(async () => undefined),
+    insertCatalog: vi.fn(async (_resource, body) => ({ id: "record-1", ...body })),
+    lockCatalog: vi.fn(async () => ({ id: "record-1", name: "Antes" })),
+    updateCatalog: vi.fn(async (_resource, _id, body) => ({ id: "record-1", ...body })),
   }
 }
 
@@ -37,9 +42,10 @@ function createRepository(tx: CatalogTransaction): CatalogRepository {
     transaction: vi.fn(async (operation) => operation(tx)),
     listCatalog: vi.fn(async () => []),
     getParameters: vi.fn(async () => null),
-    createCatalog: vi.fn(async () => ({})),
     listUsers: vi.fn(async () => []),
-    loadDemoData: vi.fn(async () => undefined),
+    listDrivers: vi.fn(async () => []),
+    loadDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
+    resetDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
     listIndicators: vi.fn(async () => []),
     listAudit: vi.fn(async () => ({ events: [], total: 0 })),
     listLegacyEvents: vi.fn(async () => []),
@@ -48,6 +54,69 @@ function createRepository(tx: CatalogTransaction): CatalogRepository {
 }
 
 describe("casos de uso de catálogos", () => {
+  it("audita el alta de un cliente en la misma transacción (flujo, paso 1)", async () => {
+    const tx = createTransaction()
+    const repository = createRepository(tx)
+    const useCases = createCatalogUseCases(repository, { hash: vi.fn(async () => "hashed") })
+
+    const created = await useCases.createCatalog("clients", { name: "Cliente A", contact: "987654321" }, "dispatcher-1")
+
+    expect(created).toMatchObject({ id: "record-1", name: "Cliente A" })
+    expect(repository.transaction).toHaveBeenCalledTimes(1)
+    expect(tx.audit.registrar).toHaveBeenCalledWith({
+      usuarioId: "dispatcher-1",
+      accion: "Alta de cliente",
+      entidad: "Cliente",
+      entidadId: "record-1",
+      valorAnterior: null,
+      valorNuevo: { name: "Cliente A", contact: "987654321" },
+    })
+  })
+
+  it("audita la edición de un producto con el valor anterior y el nuevo de los campos cambiados", async () => {
+    const tx = createTransaction()
+    const useCases = createCatalogUseCases(createRepository(tx), { hash: vi.fn(async () => "hashed") })
+
+    await useCases.updateCatalog("products", "record-1", { name: "Cemento Sol" }, "admin-1")
+
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Edición de producto",
+      entidad: "Producto",
+      valorAnterior: { name: "Antes" },
+      valorNuevo: { name: "Cemento Sol" },
+    }))
+  })
+
+  it("no edita ni audita un registro inexistente", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockCatalog).mockResolvedValue(null)
+    const useCases = createCatalogUseCases(createRepository(tx), { hash: vi.fn(async () => "hashed") })
+
+    await expect(useCases.updateCatalog("vehicles", "missing", { capacity_kg: 10 }, "admin-1"))
+      .rejects.toMatchObject({ code: "NOT_FOUND" })
+    expect(tx.updateCatalog).not.toHaveBeenCalled()
+    expect(tx.audit.registrar).not.toHaveBeenCalled()
+  })
+
+  it("bloquea disminuir existencias por debajo de lo reservado con el mensaje del Anexo B (E-09)", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockProductStock).mockResolvedValue({ totalStock: 200, reservedStock: 115 })
+    const useCases = createCatalogUseCases(createRepository(tx), { hash: vi.fn(async () => "hashed") })
+
+    await expect(useCases.registerInventoryMovement({
+      productId: "product-1",
+      type: "Ajuste",
+      quantity: 100,
+      direction: "Disminuir",
+      reason: "Merma o daño",
+      actorId: "dispatcher-1",
+    })).rejects.toMatchObject({
+      code: "CONFLICT",
+      fields: [{ field: "quantity", message: "No puedes bajar de 115 unidades: están reservadas." }],
+    })
+    expect(tx.updateProductStock).not.toHaveBeenCalled()
+  })
+
   it("actualiza inventario y audita en la misma transacción", async () => {
     const tx = createTransaction()
     const useCases = createCatalogUseCases(
@@ -266,4 +335,30 @@ describe("casos de uso de catálogos", () => {
 
     expect(repository.transaction).not.toHaveBeenCalled()
   })
+
+describe("disponibilidad de choferes (RF-03.1)", () => {
+  it("marca al chofer como no disponible y lo audita", async () => {
+    const tx = createTransaction()
+    const useCases = createCatalogUseCases(createRepository(tx), { hash: vi.fn(async () => "hashed") })
+
+    await useCases.setDriverAvailability("driver-1", false, "dispatcher-1")
+
+    expect(tx.setDriverAvailable).toHaveBeenCalledWith("driver-1", false)
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Cambio de disponibilidad de chofer",
+      valorAnterior: { disponible: true },
+      valorNuevo: { disponible: false },
+    }))
+  })
+
+  it("no deja sin disponibilidad a un chofer con reparto activo", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.driverActiveRouteCode).mockResolvedValue("R-007")
+    const useCases = createCatalogUseCases(createRepository(tx), { hash: vi.fn(async () => "hashed") })
+
+    await expect(useCases.setDriverAvailability("driver-1", false, "dispatcher-1"))
+      .rejects.toThrow("Carlos Quispe tiene el reparto R-007 asignado o en curso; no puede marcarse como no disponible.")
+    expect(tx.setDriverAvailable).not.toHaveBeenCalled()
+  })
+})
 })

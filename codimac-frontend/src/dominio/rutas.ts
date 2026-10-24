@@ -4,6 +4,7 @@ import type {
   Coordenadas,
   CriterioRuta,
   DestinoRuta,
+  MatrizViaje,
   Vehiculo,
 } from "./modelos"
 
@@ -39,39 +40,53 @@ function permutar<T>(elementos: T[]): T[][] {
   )
 }
 
-function ordenVecinoMasCercano(origen: Coordenadas, destinos: DestinoRuta[]) {
+const ALMACEN = "almacen"
+
+/** Distancia y, si el proveedor la da, duración de un tramo; sin matriz usa el estimador local. */
+function tramo(
+  matriz: MatrizViaje | undefined,
+  desde: { id: string; coordenadas: Coordenadas },
+  hasta: DestinoRuta,
+): { km: number; minutos: number | null } {
+  const i = matriz?.ids.indexOf(desde.id) ?? -1
+  const j = matriz?.ids.indexOf(hasta.id) ?? -1
+  if (matriz && i >= 0 && j >= 0) {
+    return { km: matriz.distanciasKm[i]![j]!, minutos: matriz.minutos?.[i]?.[j] ?? null }
+  }
+  return { km: distanciaLocalKm(desde.coordenadas, hasta.coordenadas), minutos: null }
+}
+
+function ordenVecinoMasCercano(origen: Coordenadas, destinos: DestinoRuta[], matriz?: MatrizViaje) {
   const pendientes = [...destinos]
   const orden: DestinoRuta[] = []
-  let actual = origen
+  let actual: { id: string; coordenadas: Coordenadas } = { id: ALMACEN, coordenadas: origen }
   while (pendientes.length) {
-    pendientes.sort(
-      (a, b) =>
-        distanciaLocalKm(actual, a.coordenadas) -
-        distanciaLocalKm(actual, b.coordenadas),
-    )
+    pendientes.sort((a, b) => tramo(matriz, actual, a).km - tramo(matriz, actual, b).km)
     const siguiente = pendientes.shift()!
     orden.push(siguiente)
-    actual = siguiente.coordenadas
+    actual = siguiente
   }
   return orden
 }
 
-function medir(
+export function medirRecorrido(
   origen: Coordenadas,
   orden: DestinoRuta[],
   vehiculo: Vehiculo,
   precioCombustible: number,
   minutosPorParada: number,
+  matriz?: MatrizViaje,
 ) {
   let distanciaKm = 0
-  let actual = origen
+  let minutosManejo = 0
+  let actual: { id: string; coordenadas: Coordenadas } = { id: ALMACEN, coordenadas: origen }
   for (const destino of orden) {
-    distanciaKm += distanciaLocalKm(actual, destino.coordenadas)
-    actual = destino.coordenadas
+    const { km, minutos } = tramo(matriz, actual, destino)
+    distanciaKm += km
+    minutosManejo += minutos ?? (km / vehiculo.velocidadPromedioKmh) * 60
+    actual = destino
   }
-  const tiempoMinutos =
-    (distanciaKm / vehiculo.velocidadPromedioKmh) * 60 +
-    minutosPorParada * orden.length
+  const tiempoMinutos = minutosManejo + minutosPorParada * orden.length
   const litros = distanciaKm / vehiculo.rendimientoKmLitro
   return {
     distanciaKm,
@@ -88,6 +103,7 @@ export function generarAlternativas(
   precioCombustible: number,
   minutosPorParada: number,
   criterio: CriterioRuta = "tiempo",
+  matriz?: MatrizViaje,
 ): AlternativaRuta[] {
   if (!destinos.length) {
     throw new ReglaNegocioError(
@@ -111,10 +127,10 @@ export function generarAlternativas(
   const ordenes =
     destinos.length <= 8
       ? permutar(destinos)
-      : [ordenVecinoMasCercano(origen, destinos)]
+      : [ordenVecinoMasCercano(origen, destinos, matriz)]
   const medidas = ordenes.map((orden) => ({
     orden,
-    ...medir(origen, orden, vehiculo, precioCombustible, minutosPorParada),
+    ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada, matriz),
   }))
   const maxTiempo = Math.max(...medidas.map((item) => item.tiempoMinutos))
   const maxCosto = Math.max(...medidas.map((item) => item.costoCombustible))
@@ -135,6 +151,36 @@ export function generarAlternativas(
     .map((item) => ({
       ...item,
       criterio,
-      usaTraficoReal: false,
+      usaTraficoReal: matriz?.usaTraficoReal ?? false,
     }))
+}
+
+/**
+ * Recorrido de referencia (RN-09): las mismas paradas en orden de prioridad (RN-04),
+ * medidas con la misma matriz que la ruta elegida. Primero la fecha límite más próxima;
+ * los pedidos sin fecha límite van después, del más antiguo al más reciente.
+ */
+export function ordenarPorPrioridad<T extends { fechaLimite?: string; fechaPedido?: string }>(destinos: T[]): T[] {
+  const tiempo = (valor?: string) => {
+    const ms = valor ? Date.parse(valor) : Number.NaN
+    return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY
+  }
+  return [...destinos].sort((a, b) => {
+    const limiteA = tiempo(a.fechaLimite)
+    const limiteB = tiempo(b.fechaLimite)
+    if (limiteA !== limiteB) return limiteA - limiteB
+    return tiempo(a.fechaPedido) - tiempo(b.fechaPedido)
+  })
+}
+
+export function recorridoReferencia(
+  origen: Coordenadas,
+  destinos: DestinoRuta[],
+  vehiculo: Vehiculo,
+  precioCombustible: number,
+  minutosPorParada: number,
+  matriz?: MatrizViaje,
+) {
+  const orden = ordenarPorPrioridad(destinos)
+  return { orden, ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada, matriz) }
 }

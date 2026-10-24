@@ -16,7 +16,7 @@ process.env.JWT_SECRET = "codimac-test-secret-with-at-least-32-characters"
 process.env.CORS_ORIGIN = "http://localhost:8443"
 process.env.DATABASE_SSL = "false"
 
-const { app } = await import("./app.js")
+const { app, isAllowedOrigin } = await import("./app.js")
 const query = vi.mocked(mocks.query)
 let server: Server
 let baseUrl: string
@@ -118,7 +118,7 @@ describe("API CODIMAC", () => {
       },
       body: JSON.stringify({
         email: "new@codimac.pe",
-        password: "long-password",
+        password: "ClaveSegura123",
         name: "Nuevo usuario",
         role: "Chofer",
       }),
@@ -150,7 +150,7 @@ describe("API CODIMAC", () => {
         } as never
       }
       if (String(statement).includes("INSERT INTO profiles")) {
-        throw Object.assign(new Error("duplicate key"), { code: "23505" })
+        throw Object.assign(new Error("duplicate key"), { code: "23505", constraint: "profiles_email_key" })
       }
       return { rows: [], rowCount: 0 } as never
     })
@@ -167,7 +167,7 @@ describe("API CODIMAC", () => {
       },
       body: JSON.stringify({
         email: "existing@codimac.pe",
-        password: "long-password",
+        password: "ClaveSegura123",
         name: "Usuario duplicado",
         role: "Chofer",
       }),
@@ -175,7 +175,10 @@ describe("API CODIMAC", () => {
 
     expect(response.status).toBe(409)
     expect(await response.json()).toMatchObject({
-      error: { code: "CONFLICT" },
+      error: {
+        code: "CONFLICT",
+        fields: [{ field: "email", message: "Ese correo ya está registrado." }],
+      },
     })
     query.mockReset()
     query.mockResolvedValue({ rows: [], rowCount: 0 } as never)
@@ -264,5 +267,14 @@ describe("API CODIMAC", () => {
       headers: { Authorization: `Bearer ${session.token}` },
     })
     expect(revokedResponse.status).toBe(401)
+  })
+
+  it("en desarrollo acepta localhost, 127.0.0.1 y la red local; en producción solo CORS_ORIGIN", () => {
+    for (const origin of ["http://localhost:8443", "http://127.0.0.1:8443", "http://10.60.35.57:8443", "http://192.168.1.20:8443"]) {
+      expect(isAllowedOrigin(origin, false), origin).toBe(true)
+    }
+    expect(isAllowedOrigin("https://sitio-ajeno.com", false)).toBe(false)
+    expect(isAllowedOrigin("http://127.0.0.1:8443", true)).toBe(false)
+    expect(isAllowedOrigin("http://localhost:8443", true)).toBe(true)
   })
 })

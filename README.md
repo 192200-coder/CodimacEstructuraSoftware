@@ -46,8 +46,24 @@ pnpm --version
    - `JWT_SECRET`: secreto aleatorio de al menos 32 caracteres.
    - `DATABASE_SSL=true` para conexiones que requieren TLS, por ejemplo Neon.
    - `CORS_ORIGIN=http://localhost:8443` para desarrollo local.
+   - `GOOGLE_ROUTES_API_KEY` (opcional): clave de servidor de Google Routes API
+     para calcular tiempos con tráfico. Vacía, se usa el estimador local y la
+     ruta se marca "sin tráfico real"; si Google falla, también.
+   - `DEMO_RESET_ENABLED` y `FORCE_HTTPS`: ver más abajo.
 
    No compartas ni confirmes el archivo `.env`; contiene credenciales locales.
+
+   **Un entorno por base de datos.** El backend lee `.env.<CODIMAC_ENV>` y luego
+   `.env`. Hay ejemplos para `development`, `test`, `demo` y `production`
+   (`.env.*.example`), cada uno con su propia base. Por ejemplo, para la demo:
+
+   ```powershell
+   Copy-Item .env.demo.example .env.demo
+   $env:CODIMAC_ENV = "demo"; pnpm dev
+   ```
+
+   En producción (`NODE_ENV=production`) el backend exige HTTPS detrás del
+   proxy (`X-Forwarded-Proto`); `FORCE_HTTPS=false` lo desactiva.
 
 3. Crea el esquema y, opcionalmente, los datos de demostración:
 
@@ -56,7 +72,12 @@ pnpm --version
    pnpm seed
    ```
 
-   La migración crea la estructura necesaria. El seed de demostración es
+   La migración crea la estructura necesaria. Si la base ya existía, vuelve a
+   ejecutar `pnpm migrate` para aplicar las migraciones nuevas:
+   `010_reference_route.sql` (recorrido de referencia; sin ella fallan el
+   historial y los indicadores) y `011_driver_availability.sql`
+   (disponibilidad de choferes; sin ella fallan la asignación y la lista de
+   recursos). El seed de demostración es
    opcional y agrega fixtures faltantes; no lo ejecutes contra una base con
    información real sin revisar primero su alcance.
 
@@ -81,13 +102,45 @@ pnpm --version
 
 ## Usuarios de demostración
 
-Al cargar los fixtures de demostración:
+`pnpm seed` (o "Cargar datos de ejemplo" en Administración) crea estas cuentas.
+Todas usan la contraseña `demostracion`.
 
-| Correo | Rol | Contraseña inicial |
-|---|---|---|
-| `maria@codimac.pe` | Despachador | `demostracion` |
-| `carlos@codimac.pe` | Chofer | `demostracion` |
-| `jose@codimac.pe` | Administrador | `demostracion` |
+| Correo | Nombre | Rol | Celular | Para qué sirve |
+|---|---|---|---|---|
+| `maria@codimac.pe` | María Rojas | Despachador | — | Pedidos, inventario, clientes, repartos e historial |
+| `jose@codimac.pe` | José Ramírez | Administrador | — | Usuarios, catálogos, parámetros, indicadores y auditoría |
+| `laura@codimac.pe` | Laura Mendoza | Administrador | — | Segundo administrador (nueva en v1.1), para probar que nadie puede desactivarse a sí mismo |
+| `carlos@codimac.pe` | Carlos Quispe | Chofer | 987654321 | Libre: asígnale un reparto para recorrer el flujo E-01 |
+| `ana@codimac.pe` | Ana Torres | Chofer | 912345678 | Nueva en v1.1; hizo el reparto cerrado del historial |
+| `luis@codimac.pe` | Luis Huamán | Chofer | 923456789 | Nuevo en v1.1; libre, para asignar un segundo reparto o dividir carga |
+
+Si una cuenta ya existía, la carga no cambia su nombre ni su contraseña.
+`pnpm seed -- --reset` sí reactiva las seis cuentas y les devuelve la contraseña
+`demostracion`. Cámbialas en cualquier entorno compartido o desplegado.
+
+Los datos de ejemplo siguen la sección 10.3 del documento de pantallas y permiten
+recorrer el flujo completo y los escenarios del Anexo C sin preparar nada:
+
+- Inventario: Cemento tipo I 200/115/85 (existencias/reservadas/disponibles),
+  Fierro 500/120/380 y Ladrillo King Kong 8 000/2 000/6 000.
+- Pedidos en cada estado: Pendiente (dos de 60 bolsas para E-03), En
+  preparación, Listo (tres livianos para un reparto con la camioneta y uno de
+  2 800 kg para E-17), Cancelado y Entregado.
+- Un reparto cerrado con referencia (historial, indicadores y P-A06).
+- Cliente D a unos 55 km del almacén (advertencia del área de servicio, E-14).
+- Portal del cliente: Cliente A responde con los últimos 4 dígitos `4321`.
+
+Para empezar de cero en una base de demostración:
+
+```powershell
+pnpm seed -- --reset
+```
+
+Esto borra pedidos, repartos, inventario, clientes, productos, vehículos y
+parámetros, conserva usuarios y auditoría, y recarga el ejemplo. Desde la
+interfaz (Administrador → Datos de ejemplo) el botón "Restablecer" solo aparece
+si el backend se inicia con `DEMO_RESET_ENABLED=true`; déjalo en `false` en
+cualquier base con datos reales.
 
 Estas credenciales son solo para desarrollo y pruebas. Cámbialas en cualquier
 entorno compartido o desplegado.
@@ -102,11 +155,18 @@ Ejecuta los comandos desde la carpeta del proyecto correspondiente:
 | Frontend | `pnpm build` | Generar el bundle de producción |
 | Frontend | `pnpm typecheck` | Compilar Angular con comprobaciones estrictas |
 | Frontend | `pnpm test` | Ejecutar las pruebas de Vitest |
+| Frontend | `pnpm lint` | Revisar el código con oxlint |
 | Backend | `pnpm dev` | Iniciar la API en el puerto 3000 |
 | Backend | `pnpm build` | Compilar TypeScript |
+| Backend | `pnpm typecheck` | Comprobar tipos sin compilar |
 | Backend | `pnpm test` | Ejecutar las pruebas de Vitest |
+| Backend | `pnpm lint` | Revisar el código con oxlint |
 | Backend | `pnpm migrate` | Aplicar el esquema de base de datos |
 | Backend | `pnpm seed` | Añadir datos de demostración faltantes |
+| Backend | `pnpm seed -- --reset` | Borrar y recargar los datos de demostración |
+
+Los logs del backend son líneas JSON (una por petición, error o evento de
+integración), por ejemplo `{"level":"warn","event":"mapas.proveedor_fallido",...}`.
 
 Consulta [codimac-backend/README.md](./codimac-backend/README.md) para más
 detalles sobre configuración, autenticación y endpoints.

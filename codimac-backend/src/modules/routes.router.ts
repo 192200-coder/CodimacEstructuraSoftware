@@ -2,7 +2,14 @@ import { Router } from "express"
 import { z } from "zod"
 import type { RouteUseCases } from "../application/routes.js"
 import { authenticate, requireRole } from "../http/auth.js"
-import { idParamSchema, uuidSchema, createRouteSchema, createRouteBatchSchema } from "../http/schemas.js"
+import {
+  createRouteBatchSchema,
+  createRouteSchema,
+  deliverStopSchema,
+  idParamSchema,
+  incidentSchema,
+  uuidSchema,
+} from "../http/schemas.js"
 
 export function createRoutesRouter(useCases: RouteUseCases) {
   const router = Router()
@@ -29,6 +36,13 @@ export function createRoutesRouter(useCases: RouteUseCases) {
     })
   })
 
+  router.post("/routes/matrix", requireRole("Despachador"), async (req, res) => {
+    const { orderIds } = z.object({
+      orderIds: z.array(uuidSchema).min(1).max(10, "Una ruta admite hasta 10 paradas."),
+    }).parse(req.body)
+    res.json({ matrix: await useCases.routeMatrix(orderIds) })
+  })
+
   router.get("/routes/history", requireRole("Despachador", "Administrador"), async (_req, res) => {
     res.json({ routes: await useCases.closedHistory() })
   })
@@ -49,11 +63,17 @@ export function createRoutesRouter(useCases: RouteUseCases) {
     res.json({ deleted: true })
   })
 
+  router.delete("/routes/:id/orders/:orderId", requireRole("Despachador"), async (req, res) => {
+    const { id } = idParamSchema.parse(req.params)
+    const orderId = uuidSchema.parse(req.params.orderId)
+    res.json({ estimate: await useCases.removeOrder(id, orderId, req.user!.id) })
+  })
+
   router.post("/routes/:id/assign", requireRole("Despachador"), async (req, res) => {
     const { id } = idParamSchema.parse(req.params)
     const body = z.object({ driverId: uuidSchema, vehicleId: uuidSchema }).parse(req.body)
-    await useCases.assign(id, body.driverId, body.vehicleId, req.user!.id)
-    res.json({ status: "Asignada", notification: "simulated" })
+    const notification = await useCases.assign(id, body.driverId, body.vehicleId, req.user!.id)
+    res.json({ status: "Asignada", notification })
   })
 
   router.get("/driver/route", requireRole("Chofer"), async (req, res) => {
@@ -73,17 +93,14 @@ export function createRoutesRouter(useCases: RouteUseCases) {
 
   router.post("/stops/:id/deliver", requireRole("Chofer"), async (req, res) => {
     const { id } = idParamSchema.parse(req.params)
-    const { receivedBy } = z.object({ receivedBy: z.string().trim().min(1).max(160) }).parse(req.body)
-    await useCases.deliver(id, receivedBy, req.user!.id)
+    const { receivedBy, observations } = deliverStopSchema.parse(req.body)
+    await useCases.deliver(id, receivedBy, req.user!.id, observations?.trim() || null)
     res.json({ status: "Entregada" })
   })
 
   router.post("/stops/:id/incidents", requireRole("Chofer"), async (req, res) => {
     const { id } = idParamSchema.parse(req.params)
-    const body = z.object({
-      cause: z.enum(["Cliente ausente", "Dirección errónea", "Otra"]),
-      notes: z.string().max(1000).nullable().optional(),
-    }).parse(req.body)
+    const body = incidentSchema.parse(req.body)
     const result = await useCases.reportIncident(
       id,
       body.cause,

@@ -23,7 +23,14 @@ import {
   getAdminUsers,
   getIndicators,
   loadDemoData,
+  resetDemoData,
+  getDemoDataStatus,
   getOrders,
+  getOrderEvents,
+  getRouteMatrix,
+  removeOrderFromRoute,
+  getDrivers,
+  setDriverAvailability,
   getResources,
   getTracking,
   getMapsConfig,
@@ -40,6 +47,11 @@ import {
   type RemoteClosedRoute,
   type RemoteInventoryMovement,
   type RemoteNotification,
+  type RemoteOrderEvent,
+  type AssignmentNotice,
+  type RouteMatrix,
+  type RouteEstimate,
+  type DriverAvailability,
   type PublicTracking,
 } from "../../lib/codimac-api"
 import type { InventoryMovementRequest } from "../../lib/codimac-api"
@@ -68,6 +80,14 @@ export class CodimacApiService {
 
   loadDemoData() {
     return loadDemoData()
+  }
+
+  resetDemoData() {
+    return resetDemoData()
+  }
+
+  getDemoDataStatus() {
+    return getDemoDataStatus()
   }
 
   updateParameters(value: {
@@ -133,6 +153,10 @@ export class CodimacApiService {
     return getOrders()
   }
 
+  getOrderEvents(id: string): Promise<RemoteOrderEvent[]> {
+    return getOrderEvents(id)
+  }
+
   prepareOrder(id: string): Promise<unknown> {
     return prepareOrder(id)
   }
@@ -177,8 +201,24 @@ export class CodimacApiService {
     id: string,
     driverId: string,
     vehicleId: string,
-  ): Promise<unknown> {
+  ): Promise<{ status: string; notification: AssignmentNotice }> {
     return assignRoute(id, driverId, vehicleId)
+  }
+
+  getRouteMatrix(orderIds: string[]): Promise<RouteMatrix> {
+    return getRouteMatrix(orderIds)
+  }
+
+  removeOrderFromRoute(routeId: string, orderId: string): Promise<RouteEstimate> {
+    return removeOrderFromRoute(routeId, orderId)
+  }
+
+  getDrivers(): Promise<DriverAvailability[]> {
+    return getDrivers()
+  }
+
+  setDriverAvailability(id: string, available: boolean): Promise<unknown> {
+    return setDriverAvailability(id, available)
   }
 
   approveRoute(id: string): Promise<{ status: string }> {
@@ -193,8 +233,8 @@ export class CodimacApiService {
     return startDriverRoute(id)
   }
 
-  deliverStop(id: string, receiver: string): Promise<unknown> {
-    return deliverStop(id, receiver)
+  deliverStop(id: string, receiver: string, observations?: string): Promise<unknown> {
+    return deliverStop(id, receiver, observations)
   }
 
   reportStopIncident(

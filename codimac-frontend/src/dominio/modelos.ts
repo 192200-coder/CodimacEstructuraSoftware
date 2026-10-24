@@ -46,6 +46,18 @@ export interface DestinoRuta {
   etiqueta: string
   coordenadas: Coordenadas
   fechaLimite?: string
+  fechaPedido?: string
+}
+
+/**
+ * Matriz del puerto ServicioMapas (RF-02.1). El índice "almacen" es el origen. Con el
+ * estimador local `minutos` es null y el tiempo sale de la velocidad del vehículo.
+ */
+export interface MatrizViaje {
+  ids: string[]
+  distanciasKm: number[][]
+  minutos: number[][] | null
+  usaTraficoReal: boolean
 }
 
 export interface AlternativaRuta {

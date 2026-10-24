@@ -46,7 +46,7 @@
         title="Cerrar sesión"
         (click)="logout()"
       >
-        <codimac-icon name="close" [size]="17" />
+        <codimac-icon name="logout" [size]="17" />
       </button>
     </div>
   </aside>
@@ -60,15 +60,21 @@
       >
         <codimac-icon name="menu" />
       </button>
-      <label class="searchbox">
-        <codimac-icon name="search" [size]="18" />
-        <input
-          aria-label="Buscar"
-          placeholder="Buscar pedido, cliente o reparto..."
-          (keydown.enter)="state.action('Búsqueda realizada')"
-        />
-        <kbd>⌘ K</kbd>
-      </label>
+      @if (canSearchOrders) {
+        <form class="searchbox" role="search" (submit)="$event.preventDefault(); submitSearch()">
+          <codimac-icon name="search" [size]="18" />
+          <input
+            #globalSearch
+            aria-label="Buscar pedido por código o cliente"
+            placeholder="Buscar pedido: 42, PED-0042 o cliente"
+            [value]="searchQuery()"
+            (input)="setSearchQuery($event)"
+          />
+          <kbd aria-hidden="true">Ctrl K</kbd>
+        </form>
+      } @else {
+        <span class="searchbox-spacer"></span>
+      }
       <div class="topbar-actions">
         <div class="notification-area">
           <button
@@ -139,14 +145,14 @@
             <button
               class="button secondary"
               type="button"
-              (click)="state.action('Selecciona los pedidos listos para armar el reparto')"
+              (click)="state.selectSection('Repartos')"
             >
               <codimac-icon name="route" [size]="18" /> Armar reparto
             </button>
             <button
               class="button primary"
               type="button"
-              (click)="state.action('Formulario de nuevo pedido listo para completar')"
+              (click)="state.openDialog('order')"
             >
               <codimac-icon name="plus" [size]="18" /> Nuevo pedido
             </button>

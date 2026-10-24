@@ -14,7 +14,7 @@ describe("validación de disponibilidad al registrar pedidos", () => {
     )).toEqual([{
       field: "lineas[0].cantidad",
       code: "STOCK_INSUFICIENTE",
-      message: "Solo hay 85 unidades disponibles; faltan 915.",
+      message: "Solo hay 85 unidades disponibles de Cemento tipo I; faltan 915.",
     }])
   })
 
@@ -30,5 +30,17 @@ describe("validación de disponibilidad al registrar pedidos", () => {
       { productId: "cemento", quantity: 86 },
       { productId: "cemento", quantity: 90 },
     ], products)).toHaveLength(2)
+  })
+
+  it("al preparar avisa el faltante y que el pedido sigue en Pendiente (RN-02, E-03)", () => {
+    expect(validateOrderStock(
+      [{ productId: "cemento", quantity: 60 }],
+      [{ id: "cemento", name: "Cemento tipo I", totalStock: 85, reservedStock: 60 }],
+      "preparacion",
+    )).toEqual([{
+      field: "lineas[0].cantidad",
+      code: "STOCK_INSUFICIENTE",
+      message: "Stock insuficiente: faltan 35 unidades de Cemento tipo I. El pedido sigue en Pendiente.",
+    }])
   })
 })
