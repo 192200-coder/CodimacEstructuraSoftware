@@ -28,6 +28,9 @@ function createTransaction(): CatalogTransaction {
     updateProductStock: vi.fn(async () => undefined),
     insertInventoryMovement: vi.fn(async () => undefined),
     hasActiveRouteForVehicle: vi.fn(async () => false),
+    lockDriver: vi.fn(async () => ({ name: "Carlos Quispe", available: true })),
+    driverActiveRouteCode: vi.fn(async () => null),
+    setDriverAvailable: vi.fn(async () => undefined),
     insertCatalog: vi.fn(async (_resource, body) => ({ id: "record-1", ...body })),
     lockCatalog: vi.fn(async () => ({ id: "record-1", name: "Antes" })),
     updateCatalog: vi.fn(async (_resource, _id, body) => ({ id: "record-1", ...body })),
@@ -40,6 +43,7 @@ function createRepository(tx: CatalogTransaction): CatalogRepository {
     listCatalog: vi.fn(async () => []),
     getParameters: vi.fn(async () => null),
     listUsers: vi.fn(async () => []),
+    listDrivers: vi.fn(async () => []),
     loadDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
     resetDemoData: vi.fn(async () => ({ operationalDataLoaded: true })),
     listIndicators: vi.fn(async () => []),
@@ -331,4 +335,30 @@ describe("casos de uso de catálogos", () => {
 
     expect(repository.transaction).not.toHaveBeenCalled()
   })
+
+describe("disponibilidad de choferes (RF-03.1)", () => {
+  it("marca al chofer como no disponible y lo audita", async () => {
+    const tx = createTransaction()
+    const useCases = createCatalogUseCases(createRepository(tx), { hash: vi.fn(async () => "hashed") })
+
+    await useCases.setDriverAvailability("driver-1", false, "dispatcher-1")
+
+    expect(tx.setDriverAvailable).toHaveBeenCalledWith("driver-1", false)
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({
+      accion: "Cambio de disponibilidad de chofer",
+      valorAnterior: { disponible: true },
+      valorNuevo: { disponible: false },
+    }))
+  })
+
+  it("no deja sin disponibilidad a un chofer con reparto activo", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.driverActiveRouteCode).mockResolvedValue("R-007")
+    const useCases = createCatalogUseCases(createRepository(tx), { hash: vi.fn(async () => "hashed") })
+
+    await expect(useCases.setDriverAvailability("driver-1", false, "dispatcher-1"))
+      .rejects.toThrow("Carlos Quispe tiene el reparto R-007 asignado o en curso; no puede marcarse como no disponible.")
+    expect(tx.setDriverAvailable).not.toHaveBeenCalled()
+  })
+})
 })

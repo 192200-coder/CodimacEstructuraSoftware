@@ -36,6 +36,13 @@ export function createRoutesRouter(useCases: RouteUseCases) {
     })
   })
 
+  router.post("/routes/matrix", requireRole("Despachador"), async (req, res) => {
+    const { orderIds } = z.object({
+      orderIds: z.array(uuidSchema).min(1).max(10, "Una ruta admite hasta 10 paradas."),
+    }).parse(req.body)
+    res.json({ matrix: await useCases.routeMatrix(orderIds) })
+  })
+
   router.get("/routes/history", requireRole("Despachador", "Administrador"), async (_req, res) => {
     res.json({ routes: await useCases.closedHistory() })
   })
@@ -54,6 +61,12 @@ export function createRoutesRouter(useCases: RouteUseCases) {
     const { id } = idParamSchema.parse(req.params)
     await useCases.remove(id, req.user!.id)
     res.json({ deleted: true })
+  })
+
+  router.delete("/routes/:id/orders/:orderId", requireRole("Despachador"), async (req, res) => {
+    const { id } = idParamSchema.parse(req.params)
+    const orderId = uuidSchema.parse(req.params.orderId)
+    res.json({ estimate: await useCases.removeOrder(id, orderId, req.user!.id) })
   })
 
   router.post("/routes/:id/assign", requireRole("Despachador"), async (req, res) => {

@@ -50,7 +50,7 @@ sharedRouter.get("/resources", requireRole("Despachador", "Administrador"), asyn
   const [drivers, vehicles] = await Promise.all([
     pool.query(
       `SELECT p.id,p.display_name,p.phone FROM profiles p
-       WHERE p.role='Chofer' AND p.active=true
+       WHERE p.role='Chofer' AND p.active=true AND p.available=true
          AND NOT EXISTS (
            SELECT 1 FROM routes r WHERE r.driver_id=p.id AND r.status IN ('Asignada','En curso')
          )

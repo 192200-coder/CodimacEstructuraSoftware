@@ -1,6 +1,7 @@
 import type { ErrorRequestHandler } from "express"
 import { ZodError } from "zod"
 import { ApplicationError } from "../application/errors.js"
+import { errorData, logger } from "./logger.js"
 
 export interface ErrorField {
   field: string
@@ -113,7 +114,7 @@ export const errorHandler: ErrorRequestHandler = (error: unknown, _req, res, _ne
       return
     }
   }
-  console.error("Error interno de CODIMAC:", error)
+  logger.error("http.error_interno", errorData(error))
   res.status(500).json({
     error: {
       code: "INTERNAL_ERROR",

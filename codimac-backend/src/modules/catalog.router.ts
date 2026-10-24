@@ -92,6 +92,18 @@ export function createCatalogRouter(
     res.json({ data: await useCases.updateParameters(body, req.user!.id) })
   })
 
+  // RF-03.1: disponibilidad de choferes (Despachador y Administrador, matriz de permisos).
+  router.get("/drivers", requireRole("Despachador", "Administrador"), async (_req, res) => {
+    res.json({ drivers: await useCases.listDrivers() })
+  })
+
+  router.put("/drivers/:id/availability", requireRole("Despachador", "Administrador"), async (req, res) => {
+    const { id } = idParamSchema.parse(req.params)
+    const { available } = z.object({ available: z.boolean({ error: "Indica si el chofer está disponible." }) }).parse(req.body)
+    await useCases.setDriverAvailability(id, available, req.user!.id)
+    res.json({ available })
+  })
+
   router.get("/admin/users", requireRole("Administrador"), async (_req, res) => {
     res.json({ users: await useCases.listUsers() })
   })

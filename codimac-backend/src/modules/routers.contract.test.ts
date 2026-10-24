@@ -59,6 +59,15 @@ function createRouteUseCasesMock(): RouteUseCases {
     }]),
     driverRoute: vi.fn(async () => null),
     routeSummary: vi.fn(async () => ({})),
+    removeOrder: vi.fn(async () => ({ distanceKm: 8, estimatedMinutes: 30, estimatedLiters: 0.8, estimatedCost: 4.96 })),
+    routeMatrix: vi.fn(async () => ({
+      ids: ["almacen", "order-1"],
+      distanciasKm: [[0, 3], [3, 0]],
+      minutos: null,
+      proveedor: "Estimador local",
+      usaTraficoReal: false,
+      aviso: "Ruta calculada con estimación local, sin tráfico real.",
+    })),
   }
 }
 
@@ -92,6 +101,8 @@ function createCatalogUseCasesMock(): CatalogUseCases {
     listIndicators: vi.fn(async () => []),
     listAudit: vi.fn(async () => ({ events: [], total: 0 })),
     listLegacyEvents: vi.fn(async () => []),
+    listDrivers: vi.fn(async () => []),
+    setDriverAvailability: vi.fn(async () => undefined),
     listInventoryMovements: vi.fn(async () => [{
       id: "movement-1",
       tipo: "ENTRADA",
@@ -440,5 +451,24 @@ describe("contratos HTTP de los routers refactorizados", () => {
     } finally {
       await new Promise<void>((resolve) => enabledServer.close(() => resolve()))
     }
+  })
+
+  it("expone la matriz, quita pedidos de rutas y cambia la disponibilidad de choferes", async () => {
+    const json = { "Content-Type": "application/json" }
+    const order = "30000000-0000-4000-8000-000000000001"
+    const route = "50000000-0000-4000-8000-000000000001"
+
+    const matrix = await fetch(`${baseUrl}/api/routes/matrix`, { method: "POST", headers: json, body: JSON.stringify({ orderIds: [order] }) })
+    expect(matrix.status).toBe(200)
+    expect(await matrix.json()).toMatchObject({ matrix: { usaTraficoReal: false } })
+
+    const removed = await fetch(`${baseUrl}/api/routes/${route}/orders/${order}`, { method: "DELETE" })
+    expect(removed.status).toBe(200)
+
+    const availability = await fetch(`${baseUrl}/api/drivers/${order}/availability`, {
+      method: "PUT", headers: json, body: JSON.stringify({ available: false }),
+    })
+    expect(availability.status).toBe(200)
+    expect(catalogUseCases.setDriverAvailability).toHaveBeenCalledWith(order, false, "90000000-0000-4000-8000-000000000001")
   })
 })

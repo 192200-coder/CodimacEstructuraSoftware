@@ -1,16 +1,22 @@
 import { app } from "./app.js"
-import { config } from "./config.js"
+import { codimacEnv, config } from "./config.js"
 import { pool } from "./db/pool.js"
+import { errorData, logger } from "./http/logger.js"
 
 const server = app.listen(config.PORT, () => {
-  console.log(`CODIMAC API escuchando en http://localhost:${config.PORT}`)
+  logger.info("servidor.iniciado", {
+    url: `http://localhost:${config.PORT}`,
+    entorno: codimacEnv,
+    proveedorMapas: config.GOOGLE_ROUTES_API_KEY ? "Google Routes" : "Estimador local",
+    https: config.forceHttps,
+  })
 })
 
 async function shutdown(signal: string) {
-  console.log(`Cerrando servidor (${signal})`)
+  logger.info("servidor.cerrando", { signal })
   server.close(async (error) => {
     if (error) {
-      console.error("No se pudo cerrar el servidor correctamente:", error)
+      logger.error("servidor.cierre_fallido", errorData(error))
       process.exitCode = 1
     }
     await pool.end()

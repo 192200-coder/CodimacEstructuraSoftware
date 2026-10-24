@@ -76,3 +76,43 @@ export function estimateStopArrivals(
     return { id: stop.id, eta }
   })
 }
+
+export interface RouteEstimate {
+  distanceKm: number
+  estimatedMinutes: number
+  estimatedLiters: number
+  estimatedCost: number
+}
+
+/**
+ * RF-01.13: al quitar una parada de una ruta aún no asignada, vuelve a estimar el recorrido
+ * con el mismo rendimiento implícito de la estimación original (velocidad, litros por km y
+ * precio por litro), recorriendo las paradas restantes en su orden actual.
+ */
+export function reestimateRoute(
+  original: RouteEstimate & { stopCount: number },
+  warehouse: Coordinates,
+  remainingStops: Coordinates[],
+  minutesPerStop: number,
+  fallbackSpeedKmh = 30,
+): RouteEstimate {
+  let distanceKm = 0
+  let current = warehouse
+  for (const stop of remainingStops) {
+    distanceKm += localDistanceKm(current, stop)
+    current = stop
+  }
+  const drivingMinutes = original.estimatedMinutes - minutesPerStop * original.stopCount
+  const speedKmh = original.distanceKm > 0 && drivingMinutes > 0
+    ? original.distanceKm / (drivingMinutes / 60)
+    : fallbackSpeedKmh
+  const litersPerKm = original.distanceKm > 0 ? original.estimatedLiters / original.distanceKm : 0
+  const pricePerLiter = original.estimatedLiters > 0 ? original.estimatedCost / original.estimatedLiters : 0
+  const estimatedLiters = distanceKm * litersPerKm
+  return {
+    distanceKm: Math.round(distanceKm * 100) / 100,
+    estimatedMinutes: Math.round((distanceKm / speedKmh) * 60 + minutesPerStop * remainingStops.length),
+    estimatedLiters: Math.round(estimatedLiters * 1000) / 1000,
+    estimatedCost: Math.round(estimatedLiters * pricePerLiter * 100) / 100,
+  }
+}

@@ -8,6 +8,8 @@ import {
 import {
   estimateStopArrivals,
   orderOpenStops,
+  reestimateRoute,
+  type RouteEstimate,
   type Coordinates,
   type OpenStop,
 } from "../domain/routing.js"
@@ -18,6 +20,7 @@ import {
   type RegistroAuditoria,
 } from "./registro-auditoria.js"
 import type { NotificadorAsignacion, ResultadoAviso } from "./notificaciones.js"
+import { createRouteMatrixUseCase, type MatrizRutas, type RouteMatrixUseCase } from "./route-matrix.js"
 
 export interface CreateRouteInput {
   orderIds: string[]
@@ -28,6 +31,8 @@ export interface CreateRouteInput {
   /** Recorrido de referencia (RN-09): mismas paradas en orden de prioridad. */
   referenceKm?: number
   referenceMinutes?: number
+  /** true si los tiempos vienen de un proveedor con tráfico (RF-02.7). */
+  usesRealTraffic?: boolean
   actorId: string
 }
 
@@ -83,6 +88,7 @@ export interface RouteTransaction {
     estimatedCost: number
     referenceKm: number | null
     referenceMinutes: number | null
+    usesRealTraffic: boolean
     actorId: string
   }): Promise<{ id: string; code: string }>
   insertRouteStops(routeId: string, orderIds: string[]): Promise<void>
@@ -107,6 +113,12 @@ export interface RouteTransaction {
     estimatedCost: number
   } | null>
   lockRouteForApproval(routeId: string): Promise<{ status: string } | null>
+  lockRouteEstimate(routeId: string): Promise<(RouteEstimate & { code: string; status: string }) | null>
+  routeStopsForEstimate(routeId: string): Promise<Array<Coordinates & { id: string; orderId: string }>>
+  planningParameters(): Promise<{ warehouse: Coordinates; minutesPerStop: number } | null>
+  deleteRouteStop(stopId: string): Promise<void>
+  renumberStops(routeId: string, stopIds: string[]): Promise<void>
+  updateRouteEstimate(routeId: string, estimate: RouteEstimate): Promise<void>
   updateRouteStatus(routeId: string, status: RouteStatus): Promise<boolean>
   deleteRouteStatusEvents(routeId: string): Promise<void>
   deleteRouteStops(routeId: string): Promise<void>
@@ -168,6 +180,10 @@ export interface RouteTransaction {
 }
 
 export interface RouteReadRepository {
+  matrixPoints(orderIds: string[]): Promise<{
+    warehouse: Coordinates
+    orders: Array<Coordinates & { id: string }>
+  } | null>
   listRoutes(): Promise<unknown[]>
   listClosedHistory(): Promise<unknown[]>
   getDriverRoute(driverId: string): Promise<unknown | null>
@@ -183,6 +199,7 @@ export interface RouteUseCases {
   createBatch(input: CreateRouteBatchInput): Promise<Array<{ id: string; code: string; status: "Asignada" }>>
   approve(routeId: string, actorId: string): Promise<void>
   remove(routeId: string, actorId: string): Promise<void>
+  removeOrder(routeId: string, orderId: string, actorId: string): Promise<RouteEstimate>
   assign(routeId: string, driverId: string, vehicleId: string, actorId: string): Promise<ResultadoAviso>
   start(routeId: string, actorId: string): Promise<void>
   deliver(
@@ -199,6 +216,7 @@ export interface RouteUseCases {
   ): Promise<"No entregada" | "Reprogramada">
   list(): Promise<unknown[]>
   closedHistory(): Promise<unknown[]>
+  routeMatrix(orderIds: string[]): Promise<MatrizRutas>
   driverRoute(driverId: string): Promise<unknown | null>
   routeSummary(routeId: string, driverId: string): Promise<unknown | null>
 }
@@ -209,6 +227,7 @@ const formatKg = (value: number) =>
 export function createRouteUseCases(
   repository: RouteRepository,
   notificador?: NotificadorAsignacion,
+  matrices: RouteMatrixUseCase = createRouteMatrixUseCase(),
 ): RouteUseCases {
   function requireRouteTransition(current: string, next: RouteStatus): RouteStatus {
     if (!canTransitionRouteStatus(current, next)) {
@@ -371,6 +390,7 @@ export function createRouteUseCases(
       estimatedCost: input.estimatedCost,
       referenceKm: input.referenceKm ?? null,
       referenceMinutes: input.referenceMinutes ?? null,
+      usesRealTraffic: input.usesRealTraffic ?? false,
       actorId: input.actorId,
     })
     await tx.insertRouteStops(route.id, input.orderIds)
@@ -455,6 +475,19 @@ export function createRouteUseCases(
         return created
       })
     },
+    async routeMatrix(orderIds) {
+      const points = await repository.matrixPoints(orderIds)
+      if (!points) {
+        throw new ApplicationError("CONFLICT", "Configura la ubicación del almacén en Parámetros antes de calcular rutas.")
+      }
+      if (points.orders.length !== orderIds.length) {
+        throw new ApplicationError("NOT_FOUND", "Uno o más pedidos no existen")
+      }
+      return matrices.obtenerMatriz(
+        ["almacen", ...points.orders.map((order) => order.id)],
+        [points.warehouse, ...points.orders],
+      )
+    },
     async approve(routeId, actorId) {
       await repository.transaction((tx) => approveInTransaction(tx, routeId, actorId))
     },
@@ -487,6 +520,52 @@ export function createRouteUseCases(
         if (route.status === "Asignada" && route.vehicleId) {
           await tx.setVehicleAvailable(route.vehicleId, true)
         }
+      })
+    },
+    async removeOrder(routeId, orderId, actorId) {
+      return repository.transaction(async (tx) => {
+        const route = await tx.lockRouteEstimate(routeId)
+        if (!route) throw new ApplicationError("NOT_FOUND", "Reparto no encontrado")
+        if (route.status !== "Calculada" && route.status !== "Aprobada") {
+          throw new ApplicationError("CONFLICT", "Solo se pueden quitar pedidos de una ruta que aún no fue asignada.")
+        }
+        const stops = await tx.routeStopsForEstimate(routeId)
+        const removed = stops.find((stop) => stop.orderId === orderId)
+        if (!removed) throw new ApplicationError("NOT_FOUND", "El pedido no pertenece a este reparto")
+        if (stops.length === 1) {
+          throw new ApplicationError("CONFLICT", "Es la única parada del reparto: retira la ruta completa.")
+        }
+        const parameters = await tx.planningParameters()
+        if (!parameters) throw new ApplicationError("CONFLICT", "Configura la ubicación del almacén en Parámetros.")
+        const remaining = stops.filter((stop) => stop.id !== removed.id)
+        const estimate = reestimateRoute(
+          { ...route, stopCount: stops.length },
+          parameters.warehouse,
+          remaining,
+          parameters.minutesPerStop,
+        )
+        await tx.deleteRouteStop(removed.id)
+        await tx.renumberStops(routeId, remaining.map((stop) => stop.id))
+        await tx.setOrdersActiveRoute([orderId], null)
+        await tx.updateRouteEstimate(routeId, estimate)
+        await registrarEventoAuditoria(tx.audit, {
+          usuarioId: actorId,
+          accion: "Retiro de pedido del reparto",
+          entidad: "Ruta",
+          entidadId: routeId,
+          valorAnterior: {
+            pedidoId: orderId,
+            paradas: stops.length,
+            distanciaKm: route.distanceKm,
+            minutosEstimados: route.estimatedMinutes,
+          },
+          valorNuevo: {
+            paradas: remaining.length,
+            distanciaKm: estimate.distanceKm,
+            minutosEstimados: estimate.estimatedMinutes,
+          },
+        })
+        return estimate
       })
     },
     async assign(routeId, driverId, vehicleId, actorId) {

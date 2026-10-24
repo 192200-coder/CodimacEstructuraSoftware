@@ -1,4 +1,4 @@
-﻿import { inTransaction, pool } from "../db/pool.js"
+import { inTransaction, pool } from "../db/pool.js"
 import type {
   AuditQuery,
   CatalogParametersInput,
@@ -10,6 +10,7 @@ import type {
   CatalogUser,
   CatalogUserSnapshot,
   DemoDataSummary,
+  DriverAvailability,
   PasswordHasher,
 } from "../application/catalog.js"
 import type { RegistroAuditoria } from "../application/registro-auditoria.js"
@@ -201,6 +202,28 @@ class PostgresCatalogTransaction implements CatalogTransaction {
     )
   }
 
+  async lockDriver(driverId: string): Promise<{ name: string; available: boolean } | null> {
+    const result = await this.client.query(
+      "SELECT display_name,available FROM profiles WHERE id=$1 AND role='Chofer' AND active=true FOR UPDATE",
+      [driverId],
+    )
+    return result.rowCount
+      ? { name: result.rows[0].display_name as string, available: Boolean(result.rows[0].available) }
+      : null
+  }
+
+  async driverActiveRouteCode(driverId: string): Promise<string | null> {
+    const result = await this.client.query(
+      "SELECT codigo FROM routes WHERE driver_id=$1 AND status IN ('Asignada','En curso') LIMIT 1",
+      [driverId],
+    )
+    return result.rowCount ? result.rows[0].codigo as string : null
+  }
+
+  async setDriverAvailable(driverId: string, available: boolean): Promise<void> {
+    await this.client.query("UPDATE profiles SET available=$2,updated_at=now() WHERE id=$1", [driverId, available])
+  }
+
   async hasActiveRouteForVehicle(vehicleId: string): Promise<boolean> {
     const result = await this.client.query(
       "SELECT 1 FROM routes WHERE vehicle_id=$1 AND status IN ('Asignada','En curso') LIMIT 1",
@@ -259,6 +282,16 @@ export class PostgresCatalogRepository implements CatalogRepository {
       "SELECT * FROM global_parameters WHERE singleton=true",
     )
     return result.rows[0] ?? null
+  }
+
+  async listDrivers(): Promise<DriverAvailability[]> {
+    const result = await pool.query(
+      `SELECT p.id,p.display_name,p.phone,p.available,
+         (SELECT r.codigo FROM routes r WHERE r.driver_id=p.id AND r.status IN ('Asignada','En curso') LIMIT 1)
+           AS active_route_code
+       FROM profiles p WHERE p.role='Chofer' AND p.active=true ORDER BY p.display_name`,
+    )
+    return result.rows as DriverAvailability[]
   }
 
   async listUsers(): Promise<CatalogUser[]> {

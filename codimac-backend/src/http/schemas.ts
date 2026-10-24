@@ -190,6 +190,7 @@ export const createRouteBatchSchema = z.object({
     estimatedCost: z.number().nonnegative().finite(),
     referenceKm: z.number().nonnegative().finite().optional(),
     referenceMinutes: z.number().int().nonnegative().optional(),
+    usesRealTraffic: z.boolean().optional(),
     driverId: uuidSchema,
     vehicleId: uuidSchema,
   }).strict()).min(1).max(10),
@@ -202,6 +203,7 @@ export const createRouteSchema = z.object({
   estimatedCost: z.number().nonnegative().finite(),
   referenceKm: z.number().nonnegative().finite().optional(),
   referenceMinutes: z.number().int().nonnegative().optional(),
+  usesRealTraffic: z.boolean().optional(),
 }).refine((value) => new Set(value.orderIds).size === value.orderIds.length, {
   message: "No se permiten pedidos duplicados",
 }).strict()

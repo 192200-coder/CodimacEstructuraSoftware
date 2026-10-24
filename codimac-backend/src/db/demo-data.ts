@@ -104,6 +104,7 @@ async function upsertUsers(client: Query, hashPassword: (password: string) => Pr
        ON CONFLICT(email) DO UPDATE SET
          phone=COALESCE(profiles.phone,EXCLUDED.phone),
          active=CASE WHEN $6 THEN true ELSE profiles.active END,
+         available=CASE WHEN $6 THEN true ELSE profiles.available END,
          password_hash=CASE WHEN $6 THEN EXCLUDED.password_hash ELSE profiles.password_hash END
        RETURNING id`,
       [user.email, passwordHash, user.name, user.role, user.phone, resetPasswords],

@@ -58,6 +58,15 @@ function createTransaction(): RouteTransaction {
     hasUnresolvedStops: vi.fn(async () => false),
     lockRouteForClosure: vi.fn(async () => ({ status: "En curso" })),
     closeRoute: vi.fn(async () => ({ vehicleId: "vehicle-1" })),
+    lockRouteEstimate: vi.fn(async () => null),
+    routeStopsForEstimate: vi.fn(async () => []),
+    planningParameters: vi.fn(async () => ({
+      warehouse: { latitude: -13.6366, longitude: -72.8814 },
+      minutesPerStop: 8,
+    })),
+    deleteRouteStop: vi.fn(async () => undefined),
+    renumberStops: vi.fn(async () => undefined),
+    updateRouteEstimate: vi.fn(async () => undefined),
   }
 }
 
@@ -68,6 +77,7 @@ function createRepository(tx: RouteTransaction): RouteRepository {
     listClosedHistory: vi.fn(async () => []),
     getDriverRoute: vi.fn(async () => null),
     getClosedRouteSummary: vi.fn(async () => null),
+    matrixPoints: vi.fn(async () => null),
   }
 }
 
@@ -488,4 +498,73 @@ describe("casos de uso de reparto", () => {
     await useCases.deliver("stop-2", "María", "driver-1")
     expect(tx.closeRoute).toHaveBeenCalledTimes(1)
   })
+
+describe("quitar un pedido de una ruta no asignada (RF-01.13)", () => {
+  const route = { code: "R-001", status: "Aprobada", distanceKm: 20, estimatedMinutes: 64, estimatedLiters: 2, estimatedCost: 12.4 }
+  const stops = [
+    { id: "stop-1", orderId: "order-1", latitude: -13.62, longitude: -72.865 },
+    { id: "stop-2", orderId: "order-2", latitude: -13.655, longitude: -72.86 },
+    { id: "stop-3", orderId: "order-3", latitude: -13.65, longitude: -72.91 },
+  ]
+
+  it("retira la parada, renumera, libera el pedido y vuelve a estimar con auditoría", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteEstimate).mockResolvedValue(route)
+    vi.mocked(tx.routeStopsForEstimate).mockResolvedValue(stops)
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    const estimate = await useCases.removeOrder("route-1", "order-2", "dispatcher-1")
+
+    expect(tx.deleteRouteStop).toHaveBeenCalledWith("stop-2")
+    expect(tx.renumberStops).toHaveBeenCalledWith("route-1", ["stop-1", "stop-3"])
+    expect(tx.setOrdersActiveRoute).toHaveBeenCalledWith(["order-2"], null)
+    expect(tx.updateRouteEstimate).toHaveBeenCalledWith("route-1", estimate)
+    expect(estimate.distanceKm).toBeGreaterThan(0)
+    expect(tx.audit.registrar).toHaveBeenCalledWith(expect.objectContaining({ accion: "Retiro de pedido del reparto" }))
+  })
+
+  it("no permite quitar pedidos de una ruta ya asignada", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteEstimate).mockResolvedValue({ ...route, status: "Asignada" })
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await expect(useCases.removeOrder("route-1", "order-2", "dispatcher-1")).rejects.toMatchObject({ code: "CONFLICT" })
+    expect(tx.deleteRouteStop).not.toHaveBeenCalled()
+  })
+
+  it("pide retirar la ruta completa si es la única parada", async () => {
+    const tx = createTransaction()
+    vi.mocked(tx.lockRouteEstimate).mockResolvedValue(route)
+    vi.mocked(tx.routeStopsForEstimate).mockResolvedValue([stops[0]!])
+    const useCases = createRouteUseCases(createRepository(tx))
+
+    await expect(useCases.removeOrder("route-1", "order-1", "dispatcher-1"))
+      .rejects.toThrow("Es la única parada del reparto: retira la ruta completa.")
+  })
+})
+
+describe("matriz de rutas por el puerto ServicioMapas (RF-02.1)", () => {
+  it("pide la matriz con el almacén primero y los pedidos en el orden recibido", async () => {
+    const tx = createTransaction()
+    const repository = createRepository(tx)
+    vi.mocked(repository.matrixPoints).mockResolvedValue({
+      warehouse: { latitude: -13.6366, longitude: -72.8814 },
+      orders: [
+        { id: "order-1", latitude: -13.62, longitude: -72.865 },
+        { id: "order-2", latitude: -13.655, longitude: -72.86 },
+      ],
+    })
+    const matrix = await createRouteUseCases(repository).routeMatrix(["order-1", "order-2"])
+
+    expect(matrix.ids).toEqual(["almacen", "order-1", "order-2"])
+    expect(matrix.distanciasKm).toHaveLength(3)
+    expect(matrix.usaTraficoReal).toBe(false)
+  })
+
+  it("exige la ubicación del almacén", async () => {
+    const tx = createTransaction()
+    await expect(createRouteUseCases(createRepository(tx)).routeMatrix(["order-1"]))
+      .rejects.toThrow("Configura la ubicación del almacén en Parámetros antes de calcular rutas.")
+  })
+})
 })

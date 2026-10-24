@@ -66,6 +66,9 @@ export interface CatalogTransaction {
     actorId: string
   }): Promise<void>
   hasActiveRouteForVehicle(vehicleId: string): Promise<boolean>
+  lockDriver(driverId: string): Promise<{ name: string; available: boolean } | null>
+  driverActiveRouteCode(driverId: string): Promise<string | null>
+  setDriverAvailable(driverId: string, available: boolean): Promise<void>
   insertCatalog(resource: CatalogResource, body: CatalogRecord): Promise<CatalogRecord>
   lockCatalog(resource: CatalogResource, id: string): Promise<CatalogRecord | null>
   updateCatalog(
@@ -90,12 +93,22 @@ export interface CatalogRepository {
   listCatalog(resource: CatalogResource): Promise<unknown[]>
   getParameters(): Promise<unknown | null>
   listUsers(): Promise<CatalogUser[]>
+  listDrivers(): Promise<DriverAvailability[]>
   loadDemoData(actorId: string): Promise<DemoDataSummary>
   resetDemoData(actorId: string): Promise<DemoDataSummary>
   listIndicators(): Promise<unknown[]>
   listAudit(query: AuditQuery): Promise<{ events: unknown[]; total: number }>
   listLegacyEvents(limit: number): Promise<unknown[]>
   listInventoryMovements(productId: string): Promise<unknown[]>
+}
+
+export interface DriverAvailability {
+  id: string
+  display_name: string
+  phone: string | null
+  available: boolean
+  /** Código del reparto Asignado o En curso, si lo tiene. */
+  active_route_code: string | null
 }
 
 export interface DemoDataSummary {
@@ -139,6 +152,8 @@ export interface CatalogUseCases {
   }): Promise<CatalogUser>
   loadDemoData(actorId: string): Promise<DemoDataSummary>
   resetDemoData(actorId: string): Promise<DemoDataSummary>
+  listDrivers(): Promise<DriverAvailability[]>
+  setDriverAvailability(driverId: string, available: boolean, actorId: string): Promise<void>
   registerInventoryMovement(input: InventoryMovementInput): Promise<number>
   listIndicators(): Promise<unknown[]>
   listAudit(query: AuditQuery): Promise<{ events: unknown[]; total: number }>
@@ -327,6 +342,30 @@ export function createCatalogUseCases(
     },
     loadDemoData: (actorId) => repository.loadDemoData(actorId),
     resetDemoData: (actorId) => repository.resetDemoData(actorId),
+    listDrivers: () => repository.listDrivers(),
+    async setDriverAvailability(driverId, available, actorId) {
+      await repository.transaction(async (tx) => {
+        const driver = await tx.lockDriver(driverId)
+        if (!driver) throw new ApplicationError("NOT_FOUND", "Chofer no encontrado")
+        if (driver.available === available) return
+        const activeRoute = available ? null : await tx.driverActiveRouteCode(driverId)
+        if (activeRoute) {
+          throw new ApplicationError(
+            "CONFLICT",
+            `${driver.name} tiene el reparto ${activeRoute} asignado o en curso; no puede marcarse como no disponible.`,
+          )
+        }
+        await tx.setDriverAvailable(driverId, available)
+        await registrarEventoAuditoria(tx.audit, {
+          usuarioId: actorId,
+          accion: "Cambio de disponibilidad de chofer",
+          entidad: "Usuario",
+          entidadId: driverId,
+          valorAnterior: { disponible: driver.available },
+          valorNuevo: { disponible: available },
+        })
+      })
+    },
     async registerInventoryMovement(input) {
       if (!Number.isFinite(input.quantity) || input.quantity <= 0) {
         throw new ApplicationError(

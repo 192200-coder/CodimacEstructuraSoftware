@@ -1,3 +1,4 @@
+import { logger } from "../http/logger.js"
 import type {
   AvisoAsignacion,
   NotificadorAsignacion,
@@ -7,7 +8,7 @@ import type {
 /** Adaptador del ejercicio: registra el aviso sin enviarlo (RF-03.6, RNF-20). */
 export class WhatsAppSimulado implements NotificadorAsignacion {
   async notificarAsignacion(aviso: AvisoAsignacion): Promise<ResultadoAviso> {
-    console.info(`[WhatsApp simulado] Reparto ${aviso.routeId} asignado al chofer ${aviso.driverId}.`)
+    logger.info("whatsapp.simulado", { routeId: aviso.routeId, driverId: aviso.driverId })
     return {
       canal: "WhatsApp",
       estado: "Simulado",
