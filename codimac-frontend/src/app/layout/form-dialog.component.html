@@ -43,11 +43,9 @@
                       <option value="">Elige un producto</option>
                       @for (product of products(); track product.id) {<option [value]="product.id">{{ product.name }}</option>}
                     </select>
-                    @if (error("lineas[" + i + "].producto"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
                   </div>
                   <div class="order-line-quantity">
                     <input [attr.data-error-key]="'lineas[' + i + '].cantidad'" [name]="'quantity-' + i" [attr.aria-label]="'Cantidad del producto ' + (i + 1)" [attr.aria-invalid]="error('lineas[' + i + '].cantidad') ? 'true' : null" type="number" inputmode="numeric" min="1" step="1" [(ngModel)]="item.quantity" (ngModelChange)="revalidate()" (blur)="touch('lineas[' + i + '].cantidad')" />
-                    @if (error("lineas[" + i + "].cantidad"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
                   </div>
                   <div class="order-line-stock">
                     <span class="order-line-mobile-label">Disponible</span>
@@ -63,6 +61,12 @@
                       <button class="icon-button order-remove-button" type="button" [attr.aria-label]="'Quitar producto ' + (i + 1)" title="Quitar producto" (click)="removeOrderItem(i)"><codimac-icon name="close" [size]="17" /></button>
                     }
                   </div>
+                  @if (error("lineas[" + i + "].producto") || error("lineas[" + i + "].cantidad")) {
+                    <div class="order-line-errors">
+                      @if (error("lineas[" + i + "].producto"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+                      @if (error("lineas[" + i + "].cantidad"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
+                    </div>
+                  }
                 </div>
               }
             </div>
@@ -76,7 +80,7 @@
                 @if (error("name"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>}
               </label>
               <label [class.field-invalid]="error('contact')">Teléfono de contacto
-                <input data-error-key="contact" name="contact" type="tel" inputmode="numeric" maxlength="9" placeholder="987654321" [(ngModel)]="contact" (ngModelChange)="revalidate()" (blur)="touch('contact')" [attr.aria-invalid]="error('contact') ? 'true' : null" />
+                <input data-error-key="contact" name="contact" type="tel" inputmode="numeric" maxlength="9" placeholder="9 dígitos" [(ngModel)]="contact" (ngModelChange)="revalidate()" (blur)="touch('contact')" [attr.aria-invalid]="error('contact') ? 'true' : null" />
                 @if (error("contact"); as message) {<span class="field-error-msg" role="alert"><codimac-icon name="alertTriangle" [size]="15" />{{ message }}</span>} @else {<small class="field-hint">Celular de 9 dígitos que empieza con 9. Se usa para el portal del cliente.</small>}
               </label>
             </div>

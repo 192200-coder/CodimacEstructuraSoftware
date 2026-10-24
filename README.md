@@ -56,7 +56,9 @@ pnpm --version
    pnpm seed
    ```
 
-   La migración crea la estructura necesaria. El seed de demostración es
+   La migración crea la estructura necesaria. Si la base ya existía, vuelve a
+   ejecutar `pnpm migrate` para aplicar `010_reference_route.sql` (recorrido
+   de referencia de cada ruta); sin ella, el historial y los indicadores fallan. El seed de demostración es
    opcional y agrega fixtures faltantes; no lo ejecutes contra una base con
    información real sin revisar primero su alcance.
 

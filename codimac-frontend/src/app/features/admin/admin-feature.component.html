@@ -37,7 +37,7 @@
   <section class="card module-card reference-comparison" aria-labelledby="reference-title">
     <div class="card-header"><div><p class="section-kicker">P-A06 · RUTA ELEGIDA VS REFERENCIA</p><h2 id="reference-title">Ahorro estimado frente al recorrido por prioridad</h2></div></div>
     @if (summary.comparables) {
-      <div class="comparison-bars">
+      <div class="reference-bars">
         <div class="comparison-row"><span>Tiempo · ruta elegida</span><div class="bar"><div class="bar-fill chosen" [style.width.%]="barWidth(summary.minutosElegidos, summary.minutosReferencia)"></div></div><strong>{{ duration(summary.minutosElegidos) }}</strong></div>
         <div class="comparison-row"><span>Tiempo · referencia</span><div class="bar"><div class="bar-fill reference" [style.width.%]="barWidth(summary.minutosReferencia, summary.minutosElegidos)"></div></div><strong>{{ duration(summary.minutosReferencia) }}</strong></div>
         <div class="comparison-row"><span>Km · ruta elegida</span><div class="bar"><div class="bar-fill chosen" [style.width.%]="barWidth(summary.kmElegidos, summary.kmReferencia)"></div></div><strong>{{ summary.kmElegidos | numero:1 }} km</strong></div>

@@ -1,8 +1,8 @@
 <section class="card module-card inventory-page">
   <div class="inventory-page-toolbar">
     <nav class="inventory-tabs" role="tablist" aria-label="Secciones de inventario">
-      <button class="button" role="tab" [class.secondary]="activeTab() !== 'stock'" [attr.aria-selected]="activeTab() === 'stock'" type="button" (click)="showStock()">Existencias</button>
-      <button class="button" role="tab" [class.secondary]="activeTab() !== 'movements'" [attr.aria-selected]="activeTab() === 'movements'" type="button" (click)="showMovements()">Movimientos</button>
+      <button class="button" role="tab" [class.primary]="activeTab() === 'stock'" [class.secondary]="activeTab() !== 'stock'" [attr.aria-selected]="activeTab() === 'stock'" type="button" (click)="showStock()">Existencias</button>
+      <button class="button" role="tab" [class.primary]="activeTab() === 'movements'" [class.secondary]="activeTab() !== 'movements'" [attr.aria-selected]="activeTab() === 'movements'" type="button" (click)="showMovements()">Movimientos</button>
     </nav>
     <div class="inventory-actions">
       @if (activeTab() === "stock") {

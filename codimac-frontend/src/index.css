@@ -485,7 +485,7 @@ td strong { color: #334256; font-weight: 600; }
 .next-stop p { margin: 0 0 5px; color: #677589; font-size: 11px; }
 .next-stop small { color: #8995a3; font-size: 11px; }
 .mobile-stop { display: flex; align-items: center; gap: 10px; min-height: 48px; border-bottom: 1px solid #edf0f3; color: #516074; font-size: 11px; }
-.mobile-stop span { width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid #d9e0e6; border-radius: 50%; }
+.mobile-stop > span { flex: 0 0 auto; width: 25px; height: 25px; display: grid; place-items: center; border: 1px solid #d9e0e6; border-radius: 50%; }
 .back-link { margin: 0 0 24px; padding: 0; color: #56718d; background: transparent; border: 0; font-size: 11px; font-weight: 600; }
 .delivery-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .mobile-address { display: flex; gap: 11px; padding: 14px; color: #2e5c8a; background: #f2f7fa; border-radius: 8px; }
@@ -1248,7 +1248,7 @@ button.metric-card:hover { border-color: #b9c6d3; box-shadow: 0 6px 16px rgba(23
 .indicator-filters { margin-bottom: 14px; }
 .indicator-filters label, .audit-filters label { display: flex; flex-direction: column; gap: 5px; color: #5c6c7f; font-size: 12px; font-weight: 700; }
 .admin-metrics { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.comparison-bars { display: grid; gap: 10px; margin: 6px 0 12px; }
+.reference-bars { display: grid; gap: 10px; margin: 6px 0 12px; }
 .comparison-row { display: grid; grid-template-columns: 170px 1fr 90px; align-items: center; gap: 12px; font-size: 12px; color: #4b5b6e; }
 .comparison-row strong { text-align: right; color: #263f5b; }
 .bar { height: 12px; background: #eef2f5; border-radius: 6px; overflow: hidden; }
@@ -1290,3 +1290,27 @@ button.metric-card:hover { border-color: #b9c6d3; box-shadow: 0 6px 16px rgba(23
   .comparison-row strong { text-align: left; }
   .check-row { grid-template-columns: auto 1fr; }
 }
+
+/* v1.1: correcciones visuales detectadas en la revisión de pantallas */
+/* El mapa crea su propio contexto de apilamiento: sus controles (z-index 400–1000) ya no
+   se dibujan por encima del fondo difuminado de los modales. */
+.location-map, .leaflet-container { position: relative; z-index: 0; isolation: isolate; }
+.filterbar { flex-wrap: wrap; }
+.filterbar > .button.primary { margin-left: auto; }
+.flow-title { gap: 14px; align-items: center; }
+.flow-title > div:first-child { flex: 1; min-width: 0; }
+.flow-title > span:not(.status-badge):not(.count-pill) { color: #6a7787; font-size: 12px; }
+.closed-route-list .flow-title .card-link { width: auto; margin: 0; padding: 0; border: 0; white-space: nowrap; }
+.pending-route-row > div { display: flex; flex-direction: column; align-items: flex-start; }
+.pending-route-row span.status-badge { display: inline-flex; width: auto; margin-top: 6px; }
+.status-history li { display: grid; grid-template-columns: auto 1fr; }
+.dialog.dialog-wide { width: min(860px, 100%); }
+.order-line-errors { grid-column: 1 / -1; display: grid; gap: 4px; margin-top: -2px; }
+
+.reference-comparison { padding: 18px 18px 0; }
+.reference-comparison .table-wrap { margin: 0 -18px; }
+.reference-comparison .card-header { margin-bottom: 12px; }
+.indicator-filters input { height: 37px; padding: 0 9px; color: #334155; background: #fff; border: 1px solid #dfe5eb; border-radius: 7px; font-size: 13px; font-weight: 500; }
+.indicator-filters .count-pill { align-self: flex-end; }
+.module-card > .field-hint { margin: 0; padding: 8px 17px; }
+.pagination > span { color: #5f6d7d; font-size: 12px; }
