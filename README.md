@@ -83,16 +83,21 @@ pnpm --version
 
 ## Usuarios de demostración
 
-Al cargar los fixtures de demostración:
+`pnpm seed` (o "Cargar datos de ejemplo" en Administración) crea estas cuentas.
+Todas usan la contraseña `demostracion`.
 
-| Correo | Rol | Contraseña inicial |
-|---|---|---|
-| `maria@codimac.pe` | Despachador | `demostracion` |
-| `jose@codimac.pe` | Administrador | `demostracion` |
-| `laura@codimac.pe` | Administrador | `demostracion` |
-| `carlos@codimac.pe` | Chofer | `demostracion` |
-| `ana@codimac.pe` | Chofer | `demostracion` |
-| `luis@codimac.pe` | Chofer | `demostracion` |
+| Correo | Nombre | Rol | Celular | Para qué sirve |
+|---|---|---|---|---|
+| `maria@codimac.pe` | María Rojas | Despachador | — | Pedidos, inventario, clientes, repartos e historial |
+| `jose@codimac.pe` | José Ramírez | Administrador | — | Usuarios, catálogos, parámetros, indicadores y auditoría |
+| `laura@codimac.pe` | Laura Mendoza | Administrador | — | Segundo administrador (nueva en v1.1), para probar que nadie puede desactivarse a sí mismo |
+| `carlos@codimac.pe` | Carlos Quispe | Chofer | 987654321 | Libre: asígnale un reparto para recorrer el flujo E-01 |
+| `ana@codimac.pe` | Ana Torres | Chofer | 912345678 | Nueva en v1.1; hizo el reparto cerrado del historial |
+| `luis@codimac.pe` | Luis Huamán | Chofer | 923456789 | Nuevo en v1.1; libre, para asignar un segundo reparto o dividir carga |
+
+Si una cuenta ya existía, la carga no cambia su nombre ni su contraseña.
+`pnpm seed -- --reset` sí reactiva las seis cuentas y les devuelve la contraseña
+`demostracion`. Cámbialas en cualquier entorno compartido o desplegado.
 
 Los datos de ejemplo siguen la sección 10.3 del documento de pantallas y permiten
 recorrer el flujo completo y los escenarios del Anexo C sin preparar nada:

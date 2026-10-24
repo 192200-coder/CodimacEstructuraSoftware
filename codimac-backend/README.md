@@ -35,11 +35,22 @@ rol en cada solicitud privada.
 
 ## Usuarios de demostración
 
-| Correo | Rol | Contraseña inicial |
+Contraseña de todas: `demostracion`. El detalle de cada cuenta y de los datos de
+ejemplo está en el [README principal](../README.md#usuarios-de-demostración).
+
+| Correo | Nombre | Rol |
 |---|---|---|
-| maria@codimac.pe | Despachador | demostracion |
-| carlos@codimac.pe | Chofer | demostracion |
-| jose@codimac.pe | Administrador | demostracion |
+| maria@codimac.pe | María Rojas | Despachador |
+| jose@codimac.pe | José Ramírez | Administrador |
+| laura@codimac.pe | Laura Mendoza | Administrador |
+| carlos@codimac.pe | Carlos Quispe | Chofer |
+| ana@codimac.pe | Ana Torres | Chofer |
+| luis@codimac.pe | Luis Huamán | Chofer |
+
+`pnpm seed` agrega lo que falte; `pnpm seed -- --reset` borra pedidos, repartos,
+inventario y catálogos, recarga el ejemplo y devuelve las cuentas de ejemplo a
+`demostracion`. `POST /api/admin/demo-data/reset` hace lo mismo solo si
+`DEMO_RESET_ENABLED=true`.
 
 ## API
 
