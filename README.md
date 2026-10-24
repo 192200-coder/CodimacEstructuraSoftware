@@ -46,8 +46,24 @@ pnpm --version
    - `JWT_SECRET`: secreto aleatorio de al menos 32 caracteres.
    - `DATABASE_SSL=true` para conexiones que requieren TLS, por ejemplo Neon.
    - `CORS_ORIGIN=http://localhost:8443` para desarrollo local.
+   - `GOOGLE_ROUTES_API_KEY` (opcional): clave de servidor de Google Routes API
+     para calcular tiempos con tráfico. Vacía, se usa el estimador local y la
+     ruta se marca "sin tráfico real"; si Google falla, también.
+   - `DEMO_RESET_ENABLED` y `FORCE_HTTPS`: ver más abajo.
 
    No compartas ni confirmes el archivo `.env`; contiene credenciales locales.
+
+   **Un entorno por base de datos.** El backend lee `.env.<CODIMAC_ENV>` y luego
+   `.env`. Hay ejemplos para `development`, `test`, `demo` y `production`
+   (`.env.*.example`), cada uno con su propia base. Por ejemplo, para la demo:
+
+   ```powershell
+   Copy-Item .env.demo.example .env.demo
+   $env:CODIMAC_ENV = "demo"; pnpm dev
+   ```
+
+   En producción (`NODE_ENV=production`) el backend exige HTTPS detrás del
+   proxy (`X-Forwarded-Proto`); `FORCE_HTTPS=false` lo desactiva.
 
 3. Crea el esquema y, opcionalmente, los datos de demostración:
 
@@ -57,8 +73,11 @@ pnpm --version
    ```
 
    La migración crea la estructura necesaria. Si la base ya existía, vuelve a
-   ejecutar `pnpm migrate` para aplicar `010_reference_route.sql` (recorrido
-   de referencia de cada ruta); sin ella, el historial y los indicadores fallan. El seed de demostración es
+   ejecutar `pnpm migrate` para aplicar las migraciones nuevas:
+   `010_reference_route.sql` (recorrido de referencia; sin ella fallan el
+   historial y los indicadores) y `011_driver_availability.sql`
+   (disponibilidad de choferes; sin ella fallan la asignación y la lista de
+   recursos). El seed de demostración es
    opcional y agrega fixtures faltantes; no lo ejecutes contra una base con
    información real sin revisar primero su alcance.
 
@@ -136,11 +155,18 @@ Ejecuta los comandos desde la carpeta del proyecto correspondiente:
 | Frontend | `pnpm build` | Generar el bundle de producción |
 | Frontend | `pnpm typecheck` | Compilar Angular con comprobaciones estrictas |
 | Frontend | `pnpm test` | Ejecutar las pruebas de Vitest |
+| Frontend | `pnpm lint` | Revisar el código con oxlint |
 | Backend | `pnpm dev` | Iniciar la API en el puerto 3000 |
 | Backend | `pnpm build` | Compilar TypeScript |
+| Backend | `pnpm typecheck` | Comprobar tipos sin compilar |
 | Backend | `pnpm test` | Ejecutar las pruebas de Vitest |
+| Backend | `pnpm lint` | Revisar el código con oxlint |
 | Backend | `pnpm migrate` | Aplicar el esquema de base de datos |
 | Backend | `pnpm seed` | Añadir datos de demostración faltantes |
+| Backend | `pnpm seed -- --reset` | Borrar y recargar los datos de demostración |
+
+Los logs del backend son líneas JSON (una por petición, error o evento de
+integración), por ejemplo `{"level":"warn","event":"mapas.proveedor_fallido",...}`.
 
 Consulta [codimac-backend/README.md](./codimac-backend/README.md) para más
 detalles sobre configuración, autenticación y endpoints.

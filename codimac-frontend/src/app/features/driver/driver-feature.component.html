@@ -35,7 +35,15 @@
           } @else {
             <p class="mobile-empty">No hay paradas pendientes en esta ruta.</p>
           }
+          <div class="view-toggle" role="group" aria-label="Ver la ruta como">
+            <button type="button" [class.active]="routeView() === 'lista'" [attr.aria-pressed]="routeView() === 'lista'" (click)="routeView.set('lista')">Lista</button>
+            <button type="button" [class.active]="routeView() === 'mapa'" [attr.aria-pressed]="routeView() === 'mapa'" (click)="routeView.set('mapa')">Mapa</button>
+          </div>
+          @if (routeView() === "mapa") {
+            <codimac-route-map class="driver-route-map" [stops]="mapStops" />
+          } @else {
           <ol class="driver-route-list">@for (stop of route.route_stops; track stop.id) {<li class="mobile-stop" [class.current]="stop.id === currentRemoteStop?.id"><span>{{ stop.sequence_number }}</span><div><strong>{{ stop.orders?.clients?.name ?? stop.orders?.code }}</strong>@if (stop.status === "Incidencia" && stop.attempts > 0) {<small>Intento {{ stop.attempts }} de 2</small>}</div><codimac-status kind="parada" [status]="stop.status" /></li>}</ol>
+          }
         } @else {
           <p class="mobile-empty">No tienes una ruta asignada por ahora.</p>
         }

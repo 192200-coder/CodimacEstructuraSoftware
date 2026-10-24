@@ -231,7 +231,32 @@
         } @else if (kind === "resources") {
           @if (resourcesLoading()) {
             <p class="loading-note">Conectando…</p>
-          } @else if (resourceRows().length) {
+          } @else {
+            <h3 class="resources-heading">Choferes</h3>
+            <div class="table-wrap resources-table">
+              <table>
+                <thead><tr><th>Chofer</th><th>Celular</th><th>Estado</th><th>Disponible para asignar</th></tr></thead>
+                <tbody>
+                  @for (driver of drivers(); track driver.id) {
+                    <tr>
+                      <td><strong>{{ driver.display_name }}</strong></td>
+                      <td>{{ driver.phone ?? "Sin celular" }}</td>
+                      <td><codimac-status [status]="driverStatus(driver)" />@if (driver.active_route_code) {<small class="field-hint">Reparto {{ driver.active_route_code }}</small>}</td>
+                      <td>
+                        <label class="availability-switch" [attr.title]="driver.active_route_code ? 'Tiene un reparto activo' : null">
+                          <input type="checkbox" role="switch" [checked]="driver.available" [disabled]="driverSaving() === driver.id || (driver.available && !!driver.active_route_code)" [attr.aria-label]="'Disponibilidad de ' + driver.display_name" (change)="toggleDriver(driver)" />
+                          <span class="toggle-track" aria-hidden="true"><span></span></span>
+                          <span>{{ driver.available ? "Sí" : "No" }}</span>
+                        </label>
+                      </td>
+                    </tr>
+                  } @empty {<tr><td colspan="4">No hay choferes activos.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <h3 class="resources-heading">Vehículos</h3>
+          }
+          @if (!resourcesLoading() && resourceRows().length) {
             <div class="table-wrap resources-table">
               <table>
                 <thead><tr><th>Tipo</th><th>Recurso</th><th>Detalle</th><th>Estado</th></tr></thead>
@@ -242,8 +267,8 @@
                 </tbody>
               </table>
             </div>
-          } @else {
-            <p>No hay choferes ni vehículos registrados como activos.</p>
+          } @else if (!resourcesLoading()) {
+            <p>No hay vehículos disponibles.</p>
           }
         }
       </div>

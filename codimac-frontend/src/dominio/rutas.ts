@@ -4,6 +4,7 @@ import type {
   Coordenadas,
   CriterioRuta,
   DestinoRuta,
+  MatrizViaje,
   Vehiculo,
 } from "./modelos"
 
@@ -39,19 +40,31 @@ function permutar<T>(elementos: T[]): T[][] {
   )
 }
 
-function ordenVecinoMasCercano(origen: Coordenadas, destinos: DestinoRuta[]) {
+const ALMACEN = "almacen"
+
+/** Distancia y, si el proveedor la da, duración de un tramo; sin matriz usa el estimador local. */
+function tramo(
+  matriz: MatrizViaje | undefined,
+  desde: { id: string; coordenadas: Coordenadas },
+  hasta: DestinoRuta,
+): { km: number; minutos: number | null } {
+  const i = matriz?.ids.indexOf(desde.id) ?? -1
+  const j = matriz?.ids.indexOf(hasta.id) ?? -1
+  if (matriz && i >= 0 && j >= 0) {
+    return { km: matriz.distanciasKm[i]![j]!, minutos: matriz.minutos?.[i]?.[j] ?? null }
+  }
+  return { km: distanciaLocalKm(desde.coordenadas, hasta.coordenadas), minutos: null }
+}
+
+function ordenVecinoMasCercano(origen: Coordenadas, destinos: DestinoRuta[], matriz?: MatrizViaje) {
   const pendientes = [...destinos]
   const orden: DestinoRuta[] = []
-  let actual = origen
+  let actual: { id: string; coordenadas: Coordenadas } = { id: ALMACEN, coordenadas: origen }
   while (pendientes.length) {
-    pendientes.sort(
-      (a, b) =>
-        distanciaLocalKm(actual, a.coordenadas) -
-        distanciaLocalKm(actual, b.coordenadas),
-    )
+    pendientes.sort((a, b) => tramo(matriz, actual, a).km - tramo(matriz, actual, b).km)
     const siguiente = pendientes.shift()!
     orden.push(siguiente)
-    actual = siguiente.coordenadas
+    actual = siguiente
   }
   return orden
 }
@@ -62,16 +75,18 @@ export function medirRecorrido(
   vehiculo: Vehiculo,
   precioCombustible: number,
   minutosPorParada: number,
+  matriz?: MatrizViaje,
 ) {
   let distanciaKm = 0
-  let actual = origen
+  let minutosManejo = 0
+  let actual: { id: string; coordenadas: Coordenadas } = { id: ALMACEN, coordenadas: origen }
   for (const destino of orden) {
-    distanciaKm += distanciaLocalKm(actual, destino.coordenadas)
-    actual = destino.coordenadas
+    const { km, minutos } = tramo(matriz, actual, destino)
+    distanciaKm += km
+    minutosManejo += minutos ?? (km / vehiculo.velocidadPromedioKmh) * 60
+    actual = destino
   }
-  const tiempoMinutos =
-    (distanciaKm / vehiculo.velocidadPromedioKmh) * 60 +
-    minutosPorParada * orden.length
+  const tiempoMinutos = minutosManejo + minutosPorParada * orden.length
   const litros = distanciaKm / vehiculo.rendimientoKmLitro
   return {
     distanciaKm,
@@ -88,6 +103,7 @@ export function generarAlternativas(
   precioCombustible: number,
   minutosPorParada: number,
   criterio: CriterioRuta = "tiempo",
+  matriz?: MatrizViaje,
 ): AlternativaRuta[] {
   if (!destinos.length) {
     throw new ReglaNegocioError(
@@ -111,10 +127,10 @@ export function generarAlternativas(
   const ordenes =
     destinos.length <= 8
       ? permutar(destinos)
-      : [ordenVecinoMasCercano(origen, destinos)]
+      : [ordenVecinoMasCercano(origen, destinos, matriz)]
   const medidas = ordenes.map((orden) => ({
     orden,
-    ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada),
+    ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada, matriz),
   }))
   const maxTiempo = Math.max(...medidas.map((item) => item.tiempoMinutos))
   const maxCosto = Math.max(...medidas.map((item) => item.costoCombustible))
@@ -135,7 +151,7 @@ export function generarAlternativas(
     .map((item) => ({
       ...item,
       criterio,
-      usaTraficoReal: false,
+      usaTraficoReal: matriz?.usaTraficoReal ?? false,
     }))
 }
 
@@ -163,7 +179,8 @@ export function recorridoReferencia(
   vehiculo: Vehiculo,
   precioCombustible: number,
   minutosPorParada: number,
+  matriz?: MatrizViaje,
 ) {
   const orden = ordenarPorPrioridad(destinos)
-  return { orden, ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada) }
+  return { orden, ...medirRecorrido(origen, orden, vehiculo, precioCombustible, minutosPorParada, matriz) }
 }

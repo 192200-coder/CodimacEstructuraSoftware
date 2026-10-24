@@ -72,6 +72,15 @@ Todas las rutas (excepto salud, login y seguimiento público) usan
 - `POST /api/inventory/:productId/movements`
 - `GET /api/inventory/:productId/movements` lists the product's chronological
   inventory movements (dispatcher or administrator)
+- `POST /api/routes/matrix` devuelve la matriz de distancias y tiempos del
+  puerto ServicioMapas (Google Routes con `GOOGLE_ROUTES_API_KEY`, o el
+  estimador local; si el proveedor falla se usa el local y `usaTraficoReal` es
+  `false`)
+- `DELETE /api/routes/:id/orders/:orderId` quita un pedido de una ruta
+  `Calculada` o `Aprobada`, renumera las paradas y vuelve a estimarla
+- `GET /api/drivers` y `PUT /api/drivers/:id/availability` gestionan la
+  disponibilidad de choferes (Despachador y Administrador); un chofer no
+  disponible no se puede asignar
 - `POST /api/routes` creates a route in `Calculada`; `POST /api/routes/:id/approve`
   explicitly approves it before assignment
 - `GET /api/routes/history` lists only closed operational routes for dispatchers

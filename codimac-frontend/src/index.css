@@ -1317,3 +1317,36 @@ button.metric-card:hover { border-color: #b9c6d3; box-shadow: 0 6px 16px rgba(23
 .demo-data-grid .card { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
 .demo-data-grid p { color: #4b5b6e; font-size: 13px; line-height: 1.5; }
 .demo-data-grid code { padding: 1px 5px; background: #eef2f5; border-radius: 4px; font-size: 12px; }
+
+/* RF-02.10: mapa de la ruta con paradas numeradas */
+.route-map-card { display: grid; gap: 10px; justify-items: start; margin: 14px 0; }
+.route-map-card codimac-route-map, .driver-route-map { display: block; width: 100%; }
+.route-map-canvas { width: 100%; height: 320px; border: 1px solid #dce4eb; border-radius: 8px; background: #eef2f4; }
+.driver-route-map .route-map-canvas { height: 360px; }
+.route-map-stop, .route-map-warehouse { display: grid !important; place-items: center; border: 2px solid #fff; border-radius: 50%; color: #fff; background: #254f79; box-shadow: 0 2px 6px rgba(20,40,60,.3); font-size: 12px; font-weight: 700; }
+.route-map-warehouse { border-radius: 6px; background: #173252; box-shadow: inset 0 -3px 0 #e99c31, 0 2px 6px rgba(20,40,60,.3); }
+.route-map-stop.delivered { background: #1f7a4a; }
+.route-map-stop.incident { background: #b26a1c; }
+.route-map-stop.failed { background: #a3201f; }
+.route-map-stop.on-way { background: #276aa3; outline: 3px solid rgba(39,106,163,.3); }
+
+/* RF-01.13: paradas de una ruta pendiente con opción de quitar */
+.pending-stops { margin: 6px 0 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.pending-stops li { display: flex; align-items: center; gap: 10px; font-size: 12px; color: #4b5b6e; }
+.link-button { padding: 2px 4px; color: #a3201f; background: transparent; border: 0; font-size: 12px; font-weight: 700; text-decoration: underline; }
+.link-button:disabled { opacity: .5; cursor: not-allowed; }
+
+/* RF-03.1: disponibilidad de choferes */
+.resources-heading { margin: 4px 0 8px; font-size: 14px; color: #2c3e53; }
+.resources-heading + .table-wrap { margin-bottom: 18px; }
+.availability-switch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 600; cursor: pointer; }
+.availability-switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.availability-switch input:checked + .toggle-track { background: #2e8c5c; }
+.availability-switch input:checked + .toggle-track > span { transform: translateX(17px); }
+.availability-switch input:focus-visible + .toggle-track { outline: 3px solid rgba(46,92,138,.28); outline-offset: 3px; }
+.availability-switch input:disabled + .toggle-track { opacity: .55; cursor: not-allowed; }
+
+/* P-CH02: alternar lista y mapa */
+.view-toggle { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin: 4px 0 12px; padding: 4px; background: #eef2f5; border-radius: 10px; }
+.view-toggle button { min-height: 44px; border: 0; border-radius: 8px; background: transparent; color: #4b5b6e; font-size: 14px; font-weight: 700; }
+.view-toggle button.active { background: #fff; color: #173252; box-shadow: 0 1px 3px rgba(20,40,60,.15); }

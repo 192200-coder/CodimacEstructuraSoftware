@@ -27,6 +27,10 @@ import {
   getDemoDataStatus,
   getOrders,
   getOrderEvents,
+  getRouteMatrix,
+  removeOrderFromRoute,
+  getDrivers,
+  setDriverAvailability,
   getResources,
   getTracking,
   getMapsConfig,
@@ -45,6 +49,9 @@ import {
   type RemoteNotification,
   type RemoteOrderEvent,
   type AssignmentNotice,
+  type RouteMatrix,
+  type RouteEstimate,
+  type DriverAvailability,
   type PublicTracking,
 } from "../../lib/codimac-api"
 import type { InventoryMovementRequest } from "../../lib/codimac-api"
@@ -196,6 +203,22 @@ export class CodimacApiService {
     vehicleId: string,
   ): Promise<{ status: string; notification: AssignmentNotice }> {
     return assignRoute(id, driverId, vehicleId)
+  }
+
+  getRouteMatrix(orderIds: string[]): Promise<RouteMatrix> {
+    return getRouteMatrix(orderIds)
+  }
+
+  removeOrderFromRoute(routeId: string, orderId: string): Promise<RouteEstimate> {
+    return removeOrderFromRoute(routeId, orderId)
+  }
+
+  getDrivers(): Promise<DriverAvailability[]> {
+    return getDrivers()
+  }
+
+  setDriverAvailability(id: string, available: boolean): Promise<unknown> {
+    return setDriverAvailability(id, available)
   }
 
   approveRoute(id: string): Promise<{ status: string }> {

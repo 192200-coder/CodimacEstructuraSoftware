@@ -25,7 +25,8 @@
           <div class="flow-title"><div><p class="section-kicker">RUTAS SIN ASIGNAR</p><h2 id="pending-routes-title">Pendientes de aprobar o asignar</h2></div></div>
           @for (route of pendingRoutes(); track route.id) {
             <article class="pending-route-row">
-              <div><strong>{{ route.code }}</strong><codimac-status [status]="route.status" /><span>{{ route.stop_count }} paradas · {{ route.weight_kg | numero }} kg · {{ route.route_stops.map((stop) => stop.code + " · " + stop.client_name).join(", ") }}</span></div>
+              <div><strong>{{ route.code }}</strong><codimac-status [status]="route.status" /><span>{{ route.stop_count }} paradas · {{ route.weight_kg | numero }} kg · {{ route.distance_km | numero:1 }} km · {{ route.estimated_minutes | numero:0 }} min</span>
+                <ul class="pending-stops">@for (stop of route.route_stops; track stop.id) {<li><span>{{ stop.sequence_number }}. {{ stop.code }} · {{ stop.client_name }}</span>@if (route.stop_count > 1) {<button class="link-button" type="button" [disabled]="loading()" [attr.aria-label]="'Quitar ' + stop.code + ' de ' + route.code" (click)="requestRemoval(route, stop)">Quitar</button>}</li>}</ul></div>
               @if (route.status === "Calculada") {<button class="button primary compact" type="button" [disabled]="loading()" (click)="approveRecoveredRoute(route)">Aprobar ruta</button>}
               @if (route.status === "Aprobada") {<button class="button primary compact" type="button" [disabled]="loading()" (click)="assignRecoveredRoute(route)">Asignar recursos</button>}
               <button class="button danger-outline compact" type="button" [disabled]="loading()" (click)="requestRetire(route)">Retirar y liberar pedidos</button>
@@ -57,7 +58,7 @@
           <button class="button primary" type="button" [disabled]="loading()" (click)="openSplitAssistant()">Sugerir división por flota disponible</button>
         </div>
       }
-      <button class="button primary flow-next" type="button" [disabled]="loading() || !selectedOrderIds().length || selectedOrderIds().length > 10" [attr.title]="selectedOrderIds().length > 10 ? 'Una ruta admite hasta 10 paradas: usa la división de carga.' : null" (click)="step.set(1)">Calcular ruta <codimac-icon name="arrow" [size]="16" /></button>
+      <button class="button primary flow-next" type="button" [disabled]="loading() || !selectedOrderIds().length || selectedOrderIds().length > 10" [attr.title]="selectedOrderIds().length > 10 ? 'Una ruta admite hasta 10 paradas: usa la división de carga.' : null" (click)="calculateRoute()">Calcular ruta <codimac-icon name="arrow" [size]="16" /></button>
     </div>
   } @else if (step() === 1) {
     <div class="flow-body">
@@ -66,10 +67,18 @@
         <div class="route-controls">
           <label>Criterio<select [value]="criterion()" (change)="changeCriterion($event)"><option value="tiempo">Menor tiempo</option><option value="combustible">Menor combustible</option><option value="equilibrio">Equilibrio</option></select></label>
           <label>Vehículo para estimar<select (change)="setEstimationVehicle($event)">@for (vehicle of resources().vehicles; track vehicle.id) {<option [value]="vehicle.id" [selected]="vehicle.id === selectedVehicleId()">{{ vehicle.vehicle_type }} · {{ vehicle.plate }}</option>}</select></label>
-          <span class="status-badge incident" title="Estimador local: distancia en línea recta × 1,35"><codimac-icon name="alertTriangle" [size]="13" />Sin tráfico real</span>
+          @if (matrixProvider.realTraffic) {
+            <span class="status-badge delivered"><codimac-icon name="checkCircle" [size]="13" />Con tráfico real · {{ matrixProvider.label }}</span>
+          } @else {
+            <span class="status-badge incident" title="Estimador local: distancia en línea recta × 1,35"><codimac-icon name="alertTriangle" [size]="13" />Sin tráfico real</span>
+          }
         </div>
       </div>
-      <p class="alert info" role="note">Ruta calculada con estimación local, sin tráfico real. El rendimiento y la velocidad se toman del vehículo elegido.</p>
+      @if (matrixLoading()) {
+        <p class="loading-note">Consultando el servicio de mapas…</p>
+      } @else if (matrixProvider.notice) {
+        <p class="alert info" role="note">{{ matrixProvider.notice }} El rendimiento y la velocidad se toman del vehículo elegido.</p>
+      }
       <div class="alternatives">
         @for (route of alternativeRows; track route.code; let i = $index) {
           <button class="route-option" type="button" [class.selected]="i === selectedAlternative()" [attr.aria-pressed]="i === selectedAlternative()" (click)="selectedAlternative.set(i)">
@@ -88,7 +97,12 @@
           <strong [class.positive]="(selectedSavingsMinutes ?? 0) > 0">{{ (selectedSavingsMinutes ?? 0) > 0 ? "Ahorro estimado: " + selectedSavingsMinutes + " min" : "Sin ahorro frente a la referencia" }}</strong>
         </div>
       }
-      <button class="button secondary" type="button" [disabled]="!alternativeRows.length" (click)="openAlternativeMap()"><codimac-icon name="pin" [size]="16" /> Ver secuencia en Google Maps</button>
+      @if (alternativeRows.length) {
+        <section class="route-map-card" aria-label="Secuencia de la alternativa elegida">
+          <codimac-route-map [warehouse]="warehousePoint" [stops]="selectedAlternativeStops" />
+          <button class="button secondary compact" type="button" (click)="openAlternativeMap()"><codimac-icon name="pin" [size]="16" /> Abrir en Google Maps</button>
+        </section>
+      }
       @if (deadlineWarnings.length) {
         <div class="alert warning" role="status">
           <strong>La llegada estimada supera la fecha límite</strong>
@@ -201,6 +215,7 @@
         <b>{{ monitoredRoute() ? (monitoredRoute()!.estimated_liters | numero:2:2) + " L" : "—" }}<small>combustible estimado</small></b>
         <b [class.warning-text]="incidentCount(monitoredRoute()) > 0">{{ incidentCount(monitoredRoute()) }}<small>incidencias abiertas</small></b>
       </div>
+      @if (monitorStops.length) {<section class="route-map-card" aria-label="Mapa del reparto"><codimac-route-map [warehouse]="warehousePoint" [stops]="monitorStops" /></section>}
       <div class="monitor-stops">
         @for (stop of monitoredRoute()?.route_stops ?? []; track stop.id) {
           <div class="monitor-stop"><span>{{ stop.sequence_number }}</span><strong>{{ stop.code }} · {{ stop.client_name }}<small>{{ stop.address }}</small></strong><codimac-status kind="parada" [status]="stop.status" />@if (stop.attempts > 0 && stop.status === "Incidencia") {<small>Intento {{ stop.attempts }} de 2</small>}@if (stop.delivered_at) {<small>Entregada {{ stop.delivered_at | fecha:"hora" }}@if (stop.received_by) { · {{ stop.received_by }}}</small>} @else if (stop.eta_at) {<small>ETA {{ stop.eta_at | fecha:"hora" }}</small>}</div>
@@ -210,6 +225,26 @@
     </div>
   }
 </section>
+@if (pendingRemoval(); as removal) {
+  <div class="dialog-backdrop" (click)="closeRemoval()">
+    <section class="dialog cancellation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="removal-title" aria-describedby="removal-message" (click)="$event.stopPropagation()">
+      <header class="dialog-header">
+        <div><p class="section-kicker">CONFIRMAR ACCIÓN</p><h2 id="removal-title">Quitar pedido del reparto</h2></div>
+        <button class="icon-button" type="button" aria-label="Cerrar confirmación" [disabled]="loading()" (click)="closeRemoval()"><codimac-icon name="close" /></button>
+      </header>
+      <div class="dialog-body">
+        <div class="dialog-confirm danger">
+          <div><codimac-icon name="xCircle" [size]="24" /></div>
+          <p id="removal-message">¿Quitar el pedido {{ removal.orderCode }} de {{ removal.routeCode }}? El pedido vuelve a la lista de Listos con su reserva y la ruta se vuelve a estimar con las paradas restantes.</p>
+        </div>
+      </div>
+      <footer class="dialog-footer">
+        <button class="button secondary" type="button" [disabled]="loading()" (click)="closeRemoval()">Volver</button>
+        <button class="button danger-primary" type="button" [disabled]="loading()" (click)="confirmRemoval()">@if (loading()) {<span class="spinner" aria-hidden="true"></span> Guardando…} @else {Sí, quitar pedido}</button>
+      </footer>
+    </section>
+  </div>
+}
 @if (pendingRetire(); as route) {
   <div class="dialog-backdrop" (click)="closeRetire()">
     <section class="dialog cancellation-dialog" role="alertdialog" aria-modal="true" aria-labelledby="retire-title" aria-describedby="retire-message" (click)="$event.stopPropagation()">

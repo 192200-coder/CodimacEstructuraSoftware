@@ -12,6 +12,8 @@ import type {
 import { IconComponent } from "../../shared/icon.component"
 import { NumeroPipe } from "../../shared/numero.pipe"
 import { StatusBadgeComponent } from "../../shared/status-badge.component"
+import { RouteMapComponent } from "../../shared/route-map.component"
+import type { ParadaMapa } from "../../../adaptadores/mapas/leaflet-mapa-ruta"
 import {
   clientTelephoneUrl,
   driverDirectionsUrl,
@@ -28,7 +30,7 @@ import {
 @Component({
   selector: "codimac-driver",
   standalone: true,
-  imports: [FechaPipe, FormsModule, IconComponent, NumeroPipe, StatusBadgeComponent],
+  imports: [FechaPipe, FormsModule, IconComponent, NumeroPipe, RouteMapComponent, StatusBadgeComponent],
   templateUrl: "./driver-feature.component.html",
 })
 export class DriverFeatureComponent implements OnDestroy {
@@ -40,6 +42,8 @@ export class DriverFeatureComponent implements OnDestroy {
   readonly busy = signal(false)
   readonly errors = signal<ErroresCampo>({})
   readonly lastReceiver = signal("")
+  /** P-CH02: la ruta en curso alterna entre lista y mapa. */
+  readonly routeView = signal<"lista" | "mapa">("lista")
   receiver = ""
   observations = ""
   incidentCause = ""
@@ -121,6 +125,20 @@ export class DriverFeatureComponent implements OnDestroy {
 
   get progressPercent(): number {
     return this.totalStops ? Math.round((this.resolvedStops / this.totalStops) * 100) : 0
+  }
+
+  get mapStops(): ParadaMapa[] {
+    return this.remoteRoute()?.route_stops.flatMap((stop) => {
+      const client = stop.orders?.clients
+      if (client?.latitude === undefined || client.longitude === undefined) return []
+      return [{
+        sequence: stop.sequence_number,
+        label: client.name ?? stop.orders?.code ?? "Parada",
+        status: stop.status,
+        latitude: Number(client.latitude),
+        longitude: Number(client.longitude),
+      }]
+    }) ?? []
   }
 
   get activeRemoteStop(): RemoteStop | undefined {

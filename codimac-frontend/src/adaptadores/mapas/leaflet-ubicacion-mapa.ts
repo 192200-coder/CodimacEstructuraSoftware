@@ -1,5 +1,5 @@
 import L from "leaflet"
-import type { CambioUbicacionMapa, CoordenadasMapa, PuertoUbicacionMapa } from "../aplicacion/ubicacion-mapa"
+import type { CambioUbicacionMapa, CoordenadasMapa, PuertoUbicacionMapa } from "../../aplicacion/ubicacion-mapa"
 
 const DEFAULT_CENTER: L.LatLngExpression = [-13.6366, -72.8814]
 

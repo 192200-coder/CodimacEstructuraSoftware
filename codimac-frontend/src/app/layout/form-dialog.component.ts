@@ -6,7 +6,7 @@ import type { DialogKind } from "../core/models"
 import { IconComponent } from "../shared/icon.component"
 import { NumeroPipe } from "../shared/numero.pipe"
 import { MapLocationPickerComponent } from "../shared/map-location-picker.component"
-import { ApiRequestError, type InventoryAdjustmentReason } from "../../lib/codimac-api"
+import { ApiRequestError, type DriverAvailability, type InventoryAdjustmentReason } from "../../lib/codimac-api"
 import { advertenciaAreaServicio } from "../../dominio/clientes"
 import { formatearKg } from "../../dominio/planificacion-ruta-ui"
 import {
@@ -78,6 +78,9 @@ export class FormDialogComponent implements OnInit {
   /** Error que no pertenece a un campo: se muestra como banner dentro del modal (M-01). */
   readonly formError = signal("")
   readonly resourcesLoading = signal(false)
+  /** RF-03.1: choferes con su disponibilidad; el despachador la cambia aquí. */
+  readonly drivers = signal<DriverAvailability[]>([])
+  readonly driverSaving = signal("")
   readonly resourceRows = signal<Array<{
     type: "Chofer" | "Vehículo"
     name: string
@@ -156,21 +159,14 @@ export class FormDialogComponent implements OnInit {
       }
       if (this.kind === "resources") {
         this.resourcesLoading.set(true)
-        const [resources, routes] = await Promise.all([this.api.getResources(), this.api.getRoutes()])
+        const [resources, routes, drivers] = await Promise.all([
+          this.api.getResources(),
+          this.api.getRoutes(),
+          this.api.getDrivers(),
+        ])
         const busy = routes.filter((route) => route.status === "Asignada" || route.status === "En curso")
+        this.drivers.set(drivers)
         this.resourceRows.set([
-          ...resources.drivers.map((driver) => ({
-            type: "Chofer" as const,
-            name: driver.display_name,
-            detail: driver.phone ?? "Celular no registrado",
-            status: "Disponible" as const,
-          })),
-          ...busy.filter((route) => route.driver_name).map((route) => ({
-            type: "Chofer" as const,
-            name: route.driver_name ?? "",
-            detail: `Reparto ${route.code}`,
-            status: "En ruta" as const,
-          })),
           ...resources.vehicles.map((vehicle) => ({
             type: "Vehículo" as const,
             name: `${vehicle.vehicle_type} · ${vehicle.plate}`,
@@ -191,6 +187,27 @@ export class FormDialogComponent implements OnInit {
       this.resourcesLoading.set(false)
       this.catalogLoading.set(false)
     }
+  }
+
+  async toggleDriver(driver: DriverAvailability): Promise<void> {
+    if (this.driverSaving()) return
+    this.driverSaving.set(driver.id)
+    this.formError.set("")
+    try {
+      await this.api.setDriverAvailability(driver.id, !driver.available)
+      this.drivers.update((list) => list.map((item) => item.id === driver.id ? { ...item, available: !driver.available } : item))
+      this.state.ordersRefresh.update((value) => value + 1)
+      this.state.showToast(`${driver.display_name} marcado como ${driver.available ? "no disponible" : "disponible"}.`)
+    } catch (error) {
+      this.formError.set(error instanceof Error ? error.message : "No se pudo cambiar la disponibilidad.")
+    } finally {
+      this.driverSaving.set("")
+    }
+  }
+
+  driverStatus(driver: DriverAvailability): string {
+    if (driver.active_route_code) return "En ruta"
+    return driver.available ? "Disponible" : "No disponible"
   }
 
   goToPlanning(): void {

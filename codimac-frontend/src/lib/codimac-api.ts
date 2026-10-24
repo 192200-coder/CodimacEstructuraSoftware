@@ -411,6 +411,7 @@ export async function createRoute(input: {
   estimatedCost: number
   referenceKm?: number
   referenceMinutes?: number
+  usesRealTraffic?: boolean
 }): Promise<{ routeId: string; code: string; status: string }> {
   return request("/routes", { method: "POST", body: JSON.stringify(input) })
 }
@@ -433,6 +434,60 @@ export async function createRouteBatch(
   input: CreateRouteBatchRequest,
 ): Promise<{ routes: Array<{ routeId: string; code: string; status: string }> }> {
   return request("/routes/batch", { method: "POST", body: JSON.stringify(input) })
+}
+
+export interface RouteMatrix {
+  ids: string[]
+  distanciasKm: number[][]
+  minutos: number[][] | null
+  proveedor: string
+  usaTraficoReal: boolean
+  aviso: string | null
+}
+
+/** RF-02.1: matriz de tiempos y distancias del puerto ServicioMapas (índice 0 = almacén). */
+export async function getRouteMatrix(orderIds: string[]): Promise<RouteMatrix> {
+  const body = await request<{ matrix: RouteMatrix }>("/routes/matrix", {
+    method: "POST",
+    body: JSON.stringify({ orderIds }),
+  })
+  return body.matrix
+}
+
+export interface RouteEstimate {
+  distanceKm: number
+  estimatedMinutes: number
+  estimatedLiters: number
+  estimatedCost: number
+}
+
+/** RF-01.13: quita un pedido de una ruta aún no asignada. */
+export async function removeOrderFromRoute(routeId: string, orderId: string): Promise<RouteEstimate> {
+  const body = await request<{ estimate: RouteEstimate }>(
+    `/routes/${encodeURIComponent(routeId)}/orders/${encodeURIComponent(orderId)}`,
+    { method: "DELETE" },
+  )
+  return body.estimate
+}
+
+export interface DriverAvailability {
+  id: string
+  display_name: string
+  phone: string | null
+  available: boolean
+  active_route_code: string | null
+}
+
+export async function getDrivers(): Promise<DriverAvailability[]> {
+  const body = await request<{ drivers: DriverAvailability[] }>("/drivers")
+  return body.drivers
+}
+
+export async function setDriverAvailability(id: string, available: boolean) {
+  return request(`/drivers/${encodeURIComponent(id)}/availability`, {
+    method: "PUT",
+    body: JSON.stringify({ available }),
+  })
 }
 
 export async function approveRoute(id: string): Promise<{ status: string }> {

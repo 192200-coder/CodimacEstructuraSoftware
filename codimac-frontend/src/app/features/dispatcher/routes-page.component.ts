@@ -2,8 +2,10 @@ import { Component, effect, signal, OnDestroy } from "@angular/core"
 import { FechaPipe } from "../../shared/fecha.pipe"
 import { AppStateService } from "../../core/app-state.service"
 import { CodimacApiService } from "../../core/codimac-api.service"
-import type { AssignmentNotice, RemoteOrder, RemoteRouteSummary } from "../../../lib/codimac-api"
-import type { CriterioRuta, DestinoRuta, Vehiculo } from "../../../dominio/modelos"
+import type { AssignmentNotice, RemoteOrder, RemoteRouteSummary, RouteMatrix } from "../../../lib/codimac-api"
+import type { CriterioRuta, DestinoRuta, MatrizViaje, Vehiculo } from "../../../dominio/modelos"
+import type { ParadaMapa, PuntoMapa } from "../../../adaptadores/mapas/leaflet-mapa-ruta"
+import { RouteMapComponent } from "../../shared/route-map.component"
 import { generarAlternativas, ordenarPorPrioridad, recorridoReferencia } from "../../../dominio/rutas"
 import {
   calcularAvisosFechaLimite,
@@ -50,7 +52,7 @@ interface SplitGroup {
 @Component({
   selector: "codimac-routes-page",
   standalone: true,
-  imports: [FechaPipe, IconComponent, NumeroPipe, StatusBadgeComponent],
+  imports: [FechaPipe, IconComponent, NumeroPipe, RouteMapComponent, StatusBadgeComponent],
   templateUrl: "./routes-page.component.html",
 })
 export class RoutesPageComponent implements OnDestroy {
@@ -76,6 +78,11 @@ export class RoutesPageComponent implements OnDestroy {
   readonly assignmentNotice = signal<AssignmentNotice | null>(null)
   /** Confirmación propia (botón rojo) para retirar o cancelar un reparto sin salir. */
   readonly pendingRetire = signal<{ id: string; code: string; status: string } | null>(null)
+  /** RF-01.13: parada que se quiere quitar de una ruta aún no asignada. */
+  readonly pendingRemoval = signal<{ routeId: string; routeCode: string; orderId: string; orderCode: string } | null>(null)
+  /** Matriz del puerto ServicioMapas para los pedidos seleccionados (RF-02.1). */
+  readonly routeMatrix = signal<RouteMatrix | null>(null)
+  readonly matrixLoading = signal(false)
   private nextGroupKey = 1
 
   calcularPeso(order: RemoteOrder): string {
@@ -217,6 +224,101 @@ export class RoutesPageComponent implements OnDestroy {
     }
   }
 
+  /** La matriz solo sirve si cubre exactamente los pedidos que se están comparando. */
+  private matrixFor(orders: RemoteOrder[]): (RouteMatrix & MatrizViaje) | undefined {
+    const matrix = this.routeMatrix()
+    if (!matrix || matrix.ids.length !== orders.length + 1) return undefined
+    return orders.every((order) => matrix.ids.includes(order.id)) ? matrix : undefined
+  }
+
+  get matrixProvider(): { label: string; realTraffic: boolean; notice: string | null } {
+    const matrix = this.matrixFor(this.selectedOrders)
+    return matrix
+      ? { label: matrix.proveedor, realTraffic: matrix.usaTraficoReal, notice: matrix.aviso }
+      : { label: "Estimador local", realTraffic: false, notice: "Ruta calculada con estimación local, sin tráfico real." }
+  }
+
+  /** Paso 5 del flujo: pide la matriz una sola vez por reparto y pasa a comparar (RNF-10). */
+  async calculateRoute(): Promise<void> {
+    this.step.set(1)
+    this.selectedAlternative.set(0)
+    const orderIds = this.selectedOrders.map((order) => order.id)
+    if (!orderIds.length || this.matrixFor(this.selectedOrders)) return
+    this.matrixLoading.set(true)
+    try {
+      this.routeMatrix.set(await this.api.getRouteMatrix(orderIds))
+    } catch (error) {
+      this.routeMatrix.set(null)
+      this.state.showToast(
+        `${error instanceof Error ? error.message : "No se pudo consultar el servicio de mapas."} Se usa la estimación local.`,
+        "info",
+        6000,
+      )
+    } finally {
+      this.matrixLoading.set(false)
+    }
+  }
+
+  get warehousePoint(): PuntoMapa | null {
+    const parameters = this.parameters()
+    return parameters
+      ? { latitude: Number(parameters.warehouse_latitude), longitude: Number(parameters.warehouse_longitude) }
+      : null
+  }
+
+  /** Paradas de la alternativa elegida, numeradas en su orden de visita, para el mapa. */
+  get selectedAlternativeStops(): ParadaMapa[] {
+    const alternative = this.alternatives[this.selectedAlternative()]
+    return alternative?.orden.map((stop, index) => ({
+      sequence: index + 1,
+      label: stop.etiqueta,
+      latitude: stop.coordenadas.latitud,
+      longitude: stop.coordenadas.longitud,
+    })) ?? []
+  }
+
+  get monitorStops(): ParadaMapa[] {
+    const route = this.monitoredRoute()
+    if (!route) return []
+    return route.route_stops.flatMap((stop) => {
+      const client = this.orders().find((order) => order.id === stop.order_id)?.clients
+      if (client?.latitude === undefined || client.longitude === undefined) return []
+      return [{
+        sequence: stop.sequence_number,
+        label: `${stop.code} · ${stop.client_name}`,
+        status: stop.status,
+        latitude: Number(client.latitude),
+        longitude: Number(client.longitude),
+      }]
+    })
+  }
+
+  requestRemoval(route: RemoteRouteSummary, stop: RemoteRouteSummary["route_stops"][number]): void {
+    this.pendingRemoval.set({ routeId: route.id, routeCode: route.code, orderId: stop.order_id, orderCode: stop.code })
+  }
+
+  closeRemoval(): void {
+    if (!this.loading()) this.pendingRemoval.set(null)
+  }
+
+  async confirmRemoval(): Promise<void> {
+    const removal = this.pendingRemoval()
+    if (!removal || this.loading()) return
+    this.loading.set(true)
+    try {
+      const estimate = await this.api.removeOrderFromRoute(removal.routeId, removal.orderId)
+      this.pendingRemoval.set(null)
+      await this.loadRouteData()
+      this.state.showToast(
+        `Pedido ${removal.orderCode} retirado de ${removal.routeCode}. Nueva estimación: ${estimate.distanceKm.toFixed(1)} km, ${estimate.estimatedMinutes} min.`,
+      )
+    } catch (error) {
+      this.state.showError(error, "No se pudo quitar el pedido del reparto.")
+    } finally {
+      this.loading.set(false)
+    }
+  }
+
   /** RN-09: mismas paradas en orden de prioridad, con la misma matriz que la ruta elegida. */
   private referenceFor(orders: RemoteOrder[], vehicle: Resource | undefined) {
     const parameters = this.parameters()
@@ -230,6 +332,7 @@ export class RoutesPageComponent implements OnDestroy {
       this.estimationVehicle(vehicle),
       Number(parameters.fuel_price),
       Number(parameters.minutes_per_stop),
+      this.matrixFor(orders),
     )
   }
 
@@ -270,6 +373,7 @@ export class RoutesPageComponent implements OnDestroy {
       parameters.fuel_price,
       parameters.minutes_per_stop,
       this.criterion(),
+      this.matrixFor(orders)?.proveedor ?? "local",
     ])
     if (cacheKey === this.alternativeCacheKey) return this.alternativeCache
     this.alternativeCache = generarAlternativas(
@@ -279,6 +383,7 @@ export class RoutesPageComponent implements OnDestroy {
       Number(parameters.fuel_price),
       Number(parameters.minutes_per_stop),
       this.criterion(),
+      this.matrixFor(orders),
     )
     this.alternativeCacheKey = cacheKey
     return this.alternativeCache
@@ -734,6 +839,7 @@ export class RoutesPageComponent implements OnDestroy {
         estimatedMinutes: alternative.estimatedMinutes,
         estimatedLiters: alternative.estimatedLiters,
         estimatedCost: alternative.estimatedCost,
+        usesRealTraffic: this.alternatives[this.selectedAlternative()]?.usaTraficoReal ?? false,
         ...(reference
           ? { referenceKm: reference.distanciaKm, referenceMinutes: Math.round(reference.tiempoMinutos) }
           : {}),

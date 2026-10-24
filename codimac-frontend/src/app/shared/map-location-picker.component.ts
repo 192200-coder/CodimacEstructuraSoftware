@@ -1,7 +1,7 @@
 import { AfterViewInit, Component, ElementRef, EventEmitter, Input, OnDestroy, Output, ViewChild, signal } from "@angular/core"
 import type { CambioUbicacionMapa, CoordenadasMapa, PuertoUbicacionMapa } from "../../aplicacion/ubicacion-mapa"
-import { GoogleMapsUbicacionMapa } from "../../adapters/google-maps-ubicacion-mapa"
-import { LeafletUbicacionMapa } from "../../adapters/leaflet-ubicacion-mapa"
+import { GoogleMapsUbicacionMapa } from "../../adaptadores/mapas/google-maps-ubicacion-mapa"
+import { LeafletUbicacionMapa } from "../../adaptadores/mapas/leaflet-ubicacion-mapa"
 import { CodimacApiService } from "../core/codimac-api.service"
 
 @Component({
