@@ -42,9 +42,18 @@ const authenticationUseCases = createAuthenticationUseCases(
 export const app = express()
 app.disable("x-powered-by")
 app.use(helmet())
+// En desarrollo el frontend puede abrirse como localhost, 127.0.0.1 o la IP de red que
+// muestra `ng serve`; en producción solo se aceptan los orígenes de CORS_ORIGIN.
+const localDevelopmentOrigin =
+  /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/
+
+export function isAllowedOrigin(origin: string | undefined, production = config.NODE_ENV === "production") {
+  return !origin || config.corsOrigins.includes(origin) || (!production && localDevelopmentOrigin.test(origin))
+}
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || config.corsOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true)
       return
     }

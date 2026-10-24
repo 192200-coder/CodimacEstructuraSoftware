@@ -16,7 +16,7 @@ process.env.JWT_SECRET = "codimac-test-secret-with-at-least-32-characters"
 process.env.CORS_ORIGIN = "http://localhost:8443"
 process.env.DATABASE_SSL = "false"
 
-const { app } = await import("./app.js")
+const { app, isAllowedOrigin } = await import("./app.js")
 const query = vi.mocked(mocks.query)
 let server: Server
 let baseUrl: string
@@ -267,5 +267,14 @@ describe("API CODIMAC", () => {
       headers: { Authorization: `Bearer ${session.token}` },
     })
     expect(revokedResponse.status).toBe(401)
+  })
+
+  it("en desarrollo acepta localhost, 127.0.0.1 y la red local; en producción solo CORS_ORIGIN", () => {
+    for (const origin of ["http://localhost:8443", "http://127.0.0.1:8443", "http://10.60.35.57:8443", "http://192.168.1.20:8443"]) {
+      expect(isAllowedOrigin(origin, false), origin).toBe(true)
+    }
+    expect(isAllowedOrigin("https://sitio-ajeno.com", false)).toBe(false)
+    expect(isAllowedOrigin("http://127.0.0.1:8443", true)).toBe(false)
+    expect(isAllowedOrigin("http://localhost:8443", true)).toBe(true)
   })
 })
